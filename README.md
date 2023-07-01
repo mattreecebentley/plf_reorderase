@@ -21,11 +21,9 @@ constexpr void reorderase (container_type &container, iterator_type first, itera
 * template <class container_type, class predicate_function>
 constexpr void reorderase_all_if (container_type &container, predicate_function predicate)
 
-  Erase all elements in a container which match the predicate. Use wherever you would use std::erase_if normally. Example using a lambda:
+  Erase all elements in a container which match the predicate. Use wherever you would use std::erase_if normally. 
 
 * template <class container_type, class value_type>
 constexpr void reorderase_all (container_type &container, value_type value)
 
-  Erase all elements in a container which are equal to value. Use wherever you would use std::erase normally. value must be able to be static_cast'd to container_type::value_type.
-
- see https://plflib.org/reorderase.htm
+  Erase all elements in a container which are equal to value. Use wherever you would use std::erase normally.
