@@ -1,11 +1,12 @@
 # plf_reorderase
-A faster method for singular erasures, ranged erasures, and erase_if-style erasures for vector/deque/static_vector when element order is not important. Benchmark averages follow, averaged across four types (int, double, 40-byte struct, 490-byute struct) and numbers of elements ranging from 10 to 920000. See website for full breakdown of details:
+A faster method for singular erasures, ranged erasures, and erase_if-style erasures for vector/deque/static_vector when element order is not important. Benchmark averages follow, averaged across four types (int, double, 40-byte struct, 490-byte struct) and numbers of elements ranging from 10 to 920000. See website for full breakdown of details:
 
 * Single erasures: 1010566% faster than .erase(position) on average (ie. 10157 x original speed), with a minimum of 10% faster for a vector of 10 ints, and a maximum of 25974010% faster for 870000 490-byte structs.
 * Ranged erasures: 12570% faster than .erase(first, last) on average, with a minimum of 20% faster for a vector of 10 ints, and a with a maximum of 77679% for 920000 490-byte structs.
 * std::erase_if/std::erase-style erasures: This typically only outperforms the std:: equivalents on types larger than 25 bytes. 38% faster than std::erase_if(container, predicate)/std::erase(container, value) on average, with a minimum of 10% slower for 50 doubles, and a maximum of 180% for 920000 490-byte structs.
 
 Function descriptions follow, for all other information including full benchmarks, see https://plflib.org/reorderase.htm
+
 
 
 * template <class container_type, class iterator_type = typename container_type::iterator>
