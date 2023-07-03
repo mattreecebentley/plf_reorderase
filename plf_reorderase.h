@@ -122,9 +122,10 @@
 
 
 
-#include <cstring>	// memcpy
+#include <cstring>	// memmove
 #include <algorithm> // std::copy
 #include <iterator> // std::move_iterator
+#include <deque>
 
 #ifdef PLF_CPP20_SUPPORT
 	#include <memory> // std::to_address
@@ -262,14 +263,10 @@ namespace plf
 	
 	
 
-	template <class container_type>
-	#ifdef PLF_TYPE_TRAITS_SUPPORT
-		PLF_CONSTFUNC inline void reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type location)
-	#else
-		PLF_CONSTFUNC inline void reorderase(container_type &container, typename container_type::iterator location)
-	#endif
+	template <class container_type, class iterator_type>
+	PLF_CONSTFUNC inline void single_reorderase(container_type &container, const iterator_type location)
 	{
-		const typename container_type::iterator back = container.end() - 1;
+		const iterator_type back = container.end() - 1;
 
 		if (location != back)
 		{
@@ -280,13 +277,49 @@ namespace plf
 	}
 
 
-
 	template <class container_type>
 	#ifdef PLF_TYPE_TRAITS_SUPPORT
-		PLF_CONSTFUNC void reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type first, const typename container_type::iterator last)
+		PLF_CONSTFUNC inline void reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type location)
 	#else
-		PLF_CONSTFUNC void reorderase(container_type &container, const typename container_type::iterator first, const typename container_type::iterator last)
+		PLF_CONSTFUNC inline void reorderase(container_type &container, const typename container_type::iterator location)
 	#endif
+	{
+		plf::single_reorderase(container, location);
+	}
+
+
+
+	template <class value_type>
+	PLF_CONSTFUNC inline void reorderase(typename std::deque<value_type> &container, typename std::deque<value_type>::iterator location)
+	{
+		if (location == container.begin())
+		{
+			container.pop_front();
+			return;
+		}
+
+		plf::single_reorderase(container, location);
+	}
+
+
+
+	template <typename value_type>
+	struct is_deque
+	{
+		static const bool value = false;
+	};
+
+
+	template <typename value_type, typename allocator_type>
+	struct is_deque<std::deque<value_type, allocator_type> >
+	{
+		static const bool value = true;
+	};
+	
+
+
+	template <class container_type, class iterator_type>
+	PLF_CONSTFUNC void range_reorderase(container_type &container, const iterator_type first, const iterator_type last)
 	{
 		typedef typename container_type::size_type size_type;
 		const size_type distance = static_cast<size_type>(last - first);
@@ -297,31 +330,43 @@ namespace plf
 		}
 		else if (distance == 1)
 		{
-			reorderase(container, first);
+			plf::reorderase(container, first);
 			return;
 		}
 
-		const typename container_type::iterator end = container.end(), first_replacement = end - distance;
+		const iterator_type end = container.end();
+
+		if (last == end)
+		{
+			container.erase(first, last);
+			return;
+		}
+
+		const iterator_type first_replacement = end - distance;
 		const size_type copy_distance = (last > first_replacement) ? distance - static_cast<size_type>(last - first_replacement) : distance;
 
 		#ifdef PLF_TYPE_TRAITS_SUPPORT
 			typedef typename container_type::value_type value_type;
 
-			if PLF_CONSTEXPR (std::is_trivially_copy_assignable<value_type>::value)
+			#ifdef PLF_CPP20_SUPPORT
+				if PLF_CONSTEXPR (std::is_same<typename std::iterator_traits<iterator_type>::iterator_category, std::contiguous_iterator_tag>::value && std::is_trivially_copy_assignable<value_type>::value)
+			#else
+				if PLF_CONSTEXPR (!plf::is_deque<container_type>::value && std::is_trivially_copy_assignable<value_type>::value)
+			#endif
 			{
 				#ifdef PLF_ALIGNMENT_SUPPORT
-					PLF_CONSTEXPR const size_type aligned_size = (alignof(value_type) > sizeof(value_type)) ? alignof(value_type) : sizeof(value_type); // To compensage for possible overalignment
+					PLF_CONSTEXPR const size_type aligned_size = (alignof(value_type) > sizeof(value_type)) ? alignof(value_type) : sizeof(value_type); // To compensate for possible overalignment
 				#else
 					PLF_CONSTEXPR const size_type aligned_size = sizeof(value_type);
 				#endif
-	
+
 				std::memmove(static_cast<void *>(&*first), static_cast<void *>(&*(end - copy_distance)), copy_distance * aligned_size);
 			}
 			#ifdef PLF_MOVE_SEMANTICS_SUPPORT
 				#ifdef PLF_EXCEPTIONS_SUPPORT
-					else if PLF_CONSTEXPR (std::is_nothrow_move_assignable<value_type>::value)
+					else if PLF_CONSTEXPR (!std::is_trivially_copy_assignable<value_type>::value && std::is_nothrow_move_assignable<value_type>::value)
 				#else
-					else if PLF_CONSTEXPR (std::is_move_assignable<value_type>::value)
+					else if PLF_CONSTEXPR (!std::is_trivially_copy_assignable<value_type>::value && std::is_move_assignable<value_type>::value)
 				#endif
 				{
 					std::copy(plf::make_move_iterator(end - copy_distance), plf::make_move_iterator(end), first);
@@ -330,7 +375,7 @@ namespace plf
 			#ifdef PLF_EXCEPTIONS_SUPPORT
 				else if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
 				{
-					value_type temp[copy_distance];
+					value_type *temp = new value_type[copy_distance];
 
 					std::copy(first, first + copy_distance, temp);
 
@@ -341,8 +386,11 @@ namespace plf
 					catch (...)
 					{
 						std::copy(temp, temp + copy_distance, first);
+						delete temp;
 						throw;
 					}
+
+					delete temp;
 				}
 			#endif
 			else
@@ -354,6 +402,31 @@ namespace plf
 		container.erase(end - distance, end);
 	}
 
+
+
+	template <class container_type>
+	#ifdef PLF_TYPE_TRAITS_SUPPORT
+		PLF_CONSTFUNC inline void reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type first, const typename container_type::iterator last)
+	#else
+		PLF_CONSTFUNC inline void reorderase(container_type &container, const typename container_type::iterator first, const typename container_type::iterator last)
+	#endif
+	{
+		plf::range_reorderase(container, first, last);
+	}
+
+
+
+	template <class value_type>
+	PLF_CONSTFUNC inline void reorderase(std::deque<value_type> &container, const typename std::deque<value_type>::iterator first, const typename std::deque<value_type>::iterator last)
+	{
+		if (first == container.begin())
+		{
+			container.erase(first, last);
+			return;
+		}
+
+		plf::range_reorderase(container, first, last);
+	}
 
 
 
@@ -379,7 +452,7 @@ namespace plf
 				plf::copy_or_move(current, current_back);
 			}
 		}
-		
+
 		container.erase(current_back, end);
 	}
 

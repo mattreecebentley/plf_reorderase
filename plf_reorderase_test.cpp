@@ -42,5 +42,25 @@ int main()
 	}
 
 
+	std::cout << "\n";
+
+	std::deque<int> temp2({1, 2, 3, 4, 4, 5, 6, 7, 7, 8, 9});
+
+	plf::reorderase(temp2, temp2.begin() + 5);
+
+	for (std::deque<int>::iterator current = temp2.begin(); current != temp2.end(); ++current)
+	{
+		std::cout << *current << ", ";
+	}
+
+	std::cout << "\n";
+
+	plf::reorderase(temp2, temp2.begin() + 1, temp2.begin() + 3);
+
+	for (std::deque<int>::iterator current = temp2.begin(); current != temp2.end(); ++current)
+	{
+		std::cout << *current << ", ";
+	}
+
 	std::cin.get();
 }
