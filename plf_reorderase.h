@@ -124,10 +124,10 @@
 
 #include <cstring>	// memmove
 #include <algorithm> // std::copy
-#include <iterator> // std::move_iterator
+#include <iterator> // std::move_iterator, std::contiguous_iterator_tag, std::random_access_iterator_tag
 #include <deque>
 
-#ifdef PLF_CPP20_SUPPORT
+#ifndef PLF_CPP20_SUPPORT
 	#include <memory> // std::to_address
 #endif
 
@@ -197,7 +197,7 @@ namespace plf
 		template <class source_pointer_type>
 		static PLF_CONSTFUNC void * void_cast(const source_pointer_type source_pointer) PLF_NOEXCEPT
 		{
-			#if defined(PLF_CPP20_SUPPORT)
+			#ifdef PLF_CPP20_SUPPORT
 				return static_cast<void *>(std::to_address(source_pointer));
 			#else
 				return static_cast<void *>(&*source_pointer);
@@ -264,7 +264,7 @@ namespace plf
 	
 
 	template <class container_type, class iterator_type>
-	PLF_CONSTFUNC inline void single_reorderase(container_type &container, const iterator_type location)
+	PLF_CONSTFUNC inline iterator_type single_reorderase(container_type &container, const iterator_type location)
 	{
 		const iterator_type back = container.end() - 1;
 
@@ -274,72 +274,74 @@ namespace plf
 		}
 
 		container.pop_back();
+		return location;
 	}
+	
 
 
 	template <class container_type>
 	#ifdef PLF_TYPE_TRAITS_SUPPORT
-		PLF_CONSTFUNC inline void reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type location)
+		PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type location)
 	#else
-		PLF_CONSTFUNC inline void reorderase(container_type &container, const typename container_type::iterator location)
+		PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename container_type::iterator location)
 	#endif
 	{
-		plf::single_reorderase(container, location);
+		return plf::single_reorderase(container, location);
 	}
 
 
 
 	template <class value_type>
-	PLF_CONSTFUNC inline void reorderase(typename std::deque<value_type> &container, typename std::deque<value_type>::iterator location)
+	PLF_CONSTFUNC inline typename std::deque<value_type>::iterator reorderase(typename std::deque<value_type> &container, typename std::deque<value_type>::iterator location)
 	{
 		if (location == container.begin())
 		{
 			container.pop_front();
-			return;
+			return container.begin();
 		}
 
-		plf::single_reorderase(container, location);
+		return plf::single_reorderase(container, location);
 	}
 
 
 
-	template <typename value_type>
-	struct is_deque
-	{
-		static const bool value = false;
-	};
+	#ifndef PLF_CPP20_SUPPORT
+		template <typename value_type>
+		struct is_deque
+		{
+			static const bool value = false;
+		};
 
 
-	template <typename value_type, typename allocator_type>
-	struct is_deque<std::deque<value_type, allocator_type> >
-	{
-		static const bool value = true;
-	};
+		template <typename value_type, typename allocator_type>
+		struct is_deque<std::deque<value_type, allocator_type> >
+		{
+			static const bool value = true;
+		};
+	#endif
 	
 
 
 	template <class container_type, class iterator_type>
-	PLF_CONSTFUNC void range_reorderase(container_type &container, const iterator_type first, const iterator_type last)
+	PLF_CONSTFUNC iterator_type range_reorderase(container_type &container, const iterator_type first, const iterator_type last)
 	{
 		typedef typename container_type::size_type size_type;
 		const size_type distance = static_cast<size_type>(last - first);
 
 		if (distance == 0)
 		{
-			return;
+			return first;
 		}
 		else if (distance == 1)
 		{
-			plf::reorderase(container, first);
-			return;
+			return plf::reorderase(container, first);
 		}
 
 		const iterator_type end = container.end();
 
 		if (last == end)
 		{
-			container.erase(first, last);
-			return;
+			return container.erase(first, last);
 		}
 
 		const iterator_type first_replacement = end - distance;
@@ -399,33 +401,33 @@ namespace plf
 			std::copy(end - copy_distance, end, first);
 		}
 
-		container.erase(end - distance, end);
+		return container.erase(end - distance, end);
 	}
 
 
 
 	template <class container_type>
 	#ifdef PLF_TYPE_TRAITS_SUPPORT
-		PLF_CONSTFUNC inline void reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type first, const typename container_type::iterator last)
+		PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type first, const typename container_type::iterator last)
 	#else
-		PLF_CONSTFUNC inline void reorderase(container_type &container, const typename container_type::iterator first, const typename container_type::iterator last)
+		PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename container_type::iterator first, const typename container_type::iterator last)
 	#endif
 	{
-		plf::range_reorderase(container, first, last);
+		return plf::range_reorderase(container, first, last);
 	}
 
 
 
 	template <class value_type>
-	PLF_CONSTFUNC inline void reorderase(std::deque<value_type> &container, const typename std::deque<value_type>::iterator first, const typename std::deque<value_type>::iterator last)
+	PLF_CONSTFUNC inline typename std::deque<value_type>::iterator reorderase(std::deque<value_type> &container, const typename std::deque<value_type>::iterator first, const typename std::deque<value_type>::iterator last)
 	{
 		if (first == container.begin())
 		{
 			container.erase(first, last);
-			return;
+			return last;
 		}
 
-		plf::range_reorderase(container, first, last);
+		return plf::range_reorderase(container, first, last);
 	}
 
 
