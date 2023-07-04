@@ -9,11 +9,11 @@
 // freely, subject to the following restrictions:
 //
 // 1. The origin of this software must not be misrepresented; you must not
-//    claim that you wrote the original software. If you use this software
-//    in a product, an acknowledgement in the product documentation would be
-//    appreciated but is not required.
+// 	claim that you wrote the original software. If you use this software
+// 	in a product, an acknowledgement in the product documentation would be
+// 	appreciated but is not required.
 // 2. Altered source versions must be plainly marked as such, and must not be
-//    misrepresented as being the original software.
+// 	misrepresented as being the original software.
 // 3. This notice may not be removed or altered from any source distribution.
 
 
@@ -28,14 +28,16 @@
 #define PLF_CONSTEXPR
 #define PLF_CONSTFUNC
 
-#define PLF_EXCEPTIONS_SUPPORT
-
-#if ((defined(__clang__) || defined(__GNUC__)) && !defined(__EXCEPTIONS)) || (defined(_MSC_VER) && !defined(_CPPUNWIND))
-	#undef PLF_EXCEPTIONS_SUPPORT
+#if !(((defined(__clang__) || defined(__GNUC__)) && !defined(__EXCEPTIONS)) || (defined(_MSC_VER) && !defined(_CPPUNWIND)))
+	#define PLF_EXCEPTIONS_SUPPORT
 #endif
 
 
 #if defined(_MSC_VER) && !defined(__clang__) && !defined(__GNUC__)
+    // Suppress dumb warnings re: constant expressions in constexpr-if statements
+	#pragma warning ( push )
+    #pragma warning ( disable : 4127 )
+
 	#if _MSC_VER >= 1600
 		#define PLF_MOVE_SEMANTICS_SUPPORT
 	#endif
@@ -127,7 +129,7 @@
 #include <iterator> // std::move_iterator, std::contiguous_iterator_tag, std::random_access_iterator_tag
 #include <deque>
 
-#ifndef PLF_CPP20_SUPPORT
+#ifdef PLF_CPP20_SUPPORT
 	#include <memory> // std::to_address
 #endif
 
@@ -260,11 +262,11 @@ namespace plf
 			*destination = *source;
 		}
 	}
-	
-	
+
+
 
 	template <class container_type, class iterator_type>
-	PLF_CONSTFUNC inline iterator_type single_reorderase(container_type &container, const iterator_type location)
+	PLF_CONSTFUNC iterator_type single_reorderase(container_type &container, const iterator_type location)
 	{
 		const iterator_type back = container.end() - 1;
 
@@ -276,7 +278,7 @@ namespace plf
 		container.pop_back();
 		return location;
 	}
-	
+
 
 
 	template <class container_type>
@@ -319,14 +321,15 @@ namespace plf
 			static const bool value = true;
 		};
 	#endif
-	
+
 
 
 	template <class container_type, class iterator_type>
 	PLF_CONSTFUNC iterator_type range_reorderase(container_type &container, const iterator_type first, const iterator_type last)
 	{
 		typedef typename container_type::size_type size_type;
-		const size_type distance = static_cast<size_type>(last - first);
+		typedef typename container_type::difference_type difference_type;
+		const difference_type distance = static_cast<difference_type>(last - first);
 
 		if (distance == 0)
 		{
@@ -345,7 +348,7 @@ namespace plf
 		}
 
 		const iterator_type first_replacement = end - distance;
-		const size_type copy_distance = (last > first_replacement) ? distance - static_cast<size_type>(last - first_replacement) : distance;
+		const size_type copy_distance = static_cast<size_type>((last > first_replacement) ? distance - static_cast<size_type>(last - first_replacement) : distance);
 
 		#ifdef PLF_TYPE_TRAITS_SUPPORT
 			typedef typename container_type::value_type value_type;
@@ -377,7 +380,7 @@ namespace plf
 			#ifdef PLF_EXCEPTIONS_SUPPORT
 				else if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
 				{
-					value_type *temp = new value_type[copy_distance];
+					value_type * const temp = new value_type[copy_distance];
 
 					std::copy(first, first + copy_distance, temp);
 
@@ -388,11 +391,11 @@ namespace plf
 					catch (...)
 					{
 						std::copy(temp, temp + copy_distance, first);
-						delete temp;
+						delete []temp;
 						throw;
 					}
 
-					delete temp;
+					delete []temp;
 				}
 			#endif
 			else
@@ -477,5 +480,9 @@ namespace plf
 #undef PLF_CONSTFUNC
 #undef PLF_ALIGNMENT_SUPPORT
 #undef PLF_EXCEPTIONS_SUPPORT
+
+#if defined(_MSC_VER) && !defined(__clang__) && !defined(__GNUC__)
+	#pragma warning ( pop )
+#endif
 
 #endif // PLF_REORDERASE
