@@ -34,7 +34,7 @@
 
 
 #if defined(_MSC_VER) && !defined(__clang__) && !defined(__GNUC__)
-    // Suppress dumb warnings re: constant expressions in constexpr-if statements
+    // Suppress incorrect (unfixed MSVC bug) warnings re: constant expressions in constexpr-if statements
 	#pragma warning ( push )
     #pragma warning ( disable : 4127 )
 
@@ -348,7 +348,7 @@ namespace plf
 		}
 
 		const iterator_type first_replacement = end - distance;
-		const size_type copy_distance = static_cast<size_type>((last > first_replacement) ? distance - static_cast<size_type>(last - first_replacement) : distance);
+		const size_type copy_distance = static_cast<size_type>((last > first_replacement) ? distance - (last - first_replacement) : distance);
 
 		#ifdef PLF_TYPE_TRAITS_SUPPORT
 			typedef typename container_type::value_type value_type;
@@ -391,11 +391,11 @@ namespace plf
 					catch (...)
 					{
 						std::copy(temp, temp + copy_distance, first);
-						delete []temp;
+						delete [] temp;
 						throw;
 					}
 
-					delete []temp;
+					delete [] temp;
 				}
 			#endif
 			else
