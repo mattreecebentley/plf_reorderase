@@ -34,7 +34,7 @@
 
 
 #if defined(_MSC_VER) && !defined(__clang__) && !defined(__GNUC__)
-    // Suppress incorrect (unfixed MSVC bug) warnings re: constant expressions in constexpr-if statements
+    // Suppress incorrect (unfixed MSVC bug at warning level 4) warnings re: constant expressions in constexpr-if statements
 	#pragma warning ( push )
     #pragma warning ( disable : 4127 )
 
@@ -43,6 +43,7 @@
 	#endif
 	#if _MSC_VER >= 1700
 		#define PLF_TYPE_TRAITS_SUPPORT
+		#define PLF_ALLOCATOR_TRAITS_SUPPORT
 	#endif
 	#if _MSC_VER >= 1900
 		#define PLF_ALIGNMENT_SUPPORT
@@ -69,6 +70,9 @@
 			#undef PLF_NOEXCEPT
 			#define PLF_NOEXCEPT noexcept
 		#endif
+		#if (__GNUC__ == 4 && __GNUC_MINOR__ >= 7) || __GNUC__ > 4
+			#define PLF_ALLOCATOR_TRAITS_SUPPORT
+		#endif
 		#if (__GNUC__ == 4 && __GNUC_MINOR__ >= 8) || __GNUC__ > 4
 			#define PLF_ALIGNMENT_SUPPORT
 		#endif
@@ -76,6 +80,7 @@
 			#define PLF_TYPE_TRAITS_SUPPORT
 		#endif
 	#elif defined(__clang__) && !defined(__GLIBCXX__) && !defined(_LIBCPP_CXX03_LANG) && __clang_major__ >= 3
+		#define PLF_ALLOCATOR_TRAITS_SUPPORT
 		#define PLF_TYPE_TRAITS_SUPPORT
 
 		#if __has_feature(cxx_alignas) && __has_feature(cxx_alignof)
@@ -102,9 +107,10 @@
 		#if __GLIBCXX__ >= 20150422 // libstdc++ v4.9 and below do not support std::is_trivially_copyable
 			#define PLF_TYPE_TRAITS_SUPPORT
 		#endif
-	#else // Assume type traits and initializer support for other compilers and standard library implementations
+	#elif !(defined(_LIBCPP_CXX03_LANG) || defined(_LIBCPP_HAS_NO_RVALUE_REFERENCES)) // Assume type traits and initializer support for other compilers and standard library implementations
 		#define PLF_MOVE_SEMANTICS_SUPPORT
 		#define PLF_TYPE_TRAITS_SUPPORT
+		#define PLF_ALLOCATOR_TRAITS_SUPPORT
 		#define PLF_ALIGNMENT_SUPPORT
 		#undef PLF_NOEXCEPT
 		#define PLF_NOEXCEPT noexcept
@@ -123,15 +129,22 @@
 #endif
 
 
+#ifdef PLF_ALLOCATOR_TRAITS_SUPPORT
+	#define PLF_DESTROY(the_allocator, allocator_instance, location)			std::allocator_traits<the_allocator>::destroy(allocator_instance, location)
+	#define PLF_ALLOCATE(the_allocator, allocator_instance, size, hint)			std::allocator_traits<the_allocator>::allocate(allocator_instance, size, hint)
+	#define PLF_DEALLOCATE(the_allocator, allocator_instance, location, size)	std::allocator_traits<the_allocator>::deallocate(allocator_instance, location, size)
+#else
+	#define PLF_DESTROY(the_allocator, allocator_instance, location)			(allocator_instance).destroy(location)
+	#define PLF_ALLOCATE(the_allocator, allocator_instance, size, hint)			(allocator_instance).allocate(size, hint)
+	#define PLF_DEALLOCATE(the_allocator, allocator_instance, location, size)	(allocator_instance).deallocate(location, size)
+#endif
+
 
 #include <cstring>	// memmove
 #include <algorithm> // std::copy
 #include <iterator> // std::move_iterator, std::contiguous_iterator_tag, std::random_access_iterator_tag
 #include <deque>
-
-#ifdef PLF_CPP20_SUPPORT
-	#include <memory> // std::to_address
-#endif
+#include <memory> // std::uninitialized_copy, std::to_address
 
 
 
@@ -293,8 +306,8 @@ namespace plf
 
 
 
-	template <class value_type>
-	PLF_CONSTFUNC inline typename std::deque<value_type>::iterator reorderase(typename std::deque<value_type> &container, typename std::deque<value_type>::iterator location)
+	template <class value_type, class allocator_type>
+	PLF_CONSTFUNC inline typename std::deque<value_type, allocator_type>::iterator reorderase(typename std::deque<value_type, allocator_type> &container, typename std::deque<value_type, allocator_type>::iterator location)
 	{
 		if (location == container.begin())
 		{
@@ -380,9 +393,10 @@ namespace plf
 			#ifdef PLF_EXCEPTIONS_SUPPORT
 				else if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
 				{
-					value_type * const temp = new value_type[copy_distance];
-
-					std::copy(first, first + copy_distance, temp);
+					typedef typename container_type::allocator_type allocator_type;
+					allocator_type alloc;
+					value_type * const temp = PLF_ALLOCATE(allocator_type, alloc, copy_distance, &*end);
+					std::uninitialized_copy(first, first + copy_distance, temp);
 
 					try
 					{
@@ -391,11 +405,28 @@ namespace plf
 					catch (...)
 					{
 						std::copy(temp, temp + copy_distance, first);
-						delete [] temp;
+
+						if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
+						{
+							for (value_type *current = temp, *temp_end = temp + copy_distance; current != temp_end; ++current)
+							{
+								PLF_DESTROY(allocator_type, alloc, current);
+							}
+						}
+						
+						PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
 						throw;
 					}
 
-					delete [] temp;
+					if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
+					{
+						for (value_type *current = temp, *temp_end = temp + copy_distance; current != temp_end; ++current)
+						{
+							PLF_DESTROY(allocator_type, alloc, current);
+						}
+					}
+					
+					PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
 				}
 			#endif
 			else
@@ -421,8 +452,8 @@ namespace plf
 
 
 
-	template <class value_type>
-	PLF_CONSTFUNC inline typename std::deque<value_type>::iterator reorderase(std::deque<value_type> &container, const typename std::deque<value_type>::iterator first, const typename std::deque<value_type>::iterator last)
+	template <class value_type, class allocator_type>
+	PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reorderase(std::deque<value_type, allocator_type> &container, const typename std::deque<value_type, allocator_type>::iterator first, const typename std::deque<value_type, allocator_type>::iterator last)
 	{
 		if (first == container.begin())
 		{
@@ -473,13 +504,18 @@ namespace plf
 } // plf namespace
 
 
+#undef PLF_ALIGNMENT_SUPPORT
 #undef PLF_TYPE_TRAITS_SUPPORT
+#undef PLF_ALLOCATOR_TRAITS_SUPPORT
 #undef PLF_MOVE_SEMANTICS_SUPPORT
 #undef PLF_NOEXCEPT
 #undef PLF_CONSTEXPR
 #undef PLF_CONSTFUNC
-#undef PLF_ALIGNMENT_SUPPORT
-#undef PLF_EXCEPTIONS_SUPPORT
+#undef PLF_CPP20_SUPPORT
+
+#undef PLF_DESTROY
+#undef PLF_ALLOCATE
+#undef PLF_DEALLOCATE
 
 #if defined(_MSC_VER) && !defined(__clang__) && !defined(__GNUC__)
 	#pragma warning ( pop )
