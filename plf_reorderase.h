@@ -140,267 +140,373 @@
 #endif
 
 
-#include <cstring>	// memmove
+#include <cstring>	// memcpy
 #include <algorithm> // std::copy
 #include <iterator> // std::move_iterator, std::contiguous_iterator_tag, std::random_access_iterator_tag
-#include <deque>
 #include <memory> // std::uninitialized_copy, std::to_address
-
+#include <deque>
 
 
 namespace plf
 {
-	#ifndef PLF_TOOLS
-		#define PLF_TOOLS
 
-		// std:: tool replacements for C++03/98/11 support:
-		template <bool condition, class T = void>
-		struct enable_if
+#ifndef PLF_TOOLS
+	#define PLF_TOOLS
+
+	// std:: tool replacements for C++03/98/11 support:
+	template <bool condition, class T = void>
+	struct enable_if
+	{
+		typedef T type;
+	};
+
+	template <class T>
+	struct enable_if<false, T>
+	{};
+
+
+
+	template <bool flag, class is_true, class is_false> struct conditional;
+
+	template <class is_true, class is_false> struct conditional<true, is_true, is_false>
+	{
+		typedef is_true type;
+	};
+
+	template <class is_true, class is_false> struct conditional<false, is_true, is_false>
+	{
+		typedef is_false type;
+	};
+
+
+
+	template <class element_type>
+	struct less
+	{
+		bool operator() (const element_type &a, const element_type &b) const PLF_NOEXCEPT
 		{
-			typedef T type;
-		};
-
-		template <class T>
-		struct enable_if<false, T>
-		{};
-
-
-
-		template <bool flag, class is_true, class is_false> struct conditional;
-
-		template <class is_true, class is_false> struct conditional<true, is_true, is_false>
-		{
-			typedef is_true type;
-		};
-
-		template <class is_true, class is_false> struct conditional<false, is_true, is_false>
-		{
-			typedef is_false type;
-		};
-
-
-
-		template <class element_type>
-		struct less
-		{
-			bool operator() (const element_type &a, const element_type &b) const PLF_NOEXCEPT
-			{
-				return a < b;
-			}
-		};
-
-
-
-		template<class element_type>
-		struct equal_to
-		{
-			const element_type value;
-
-			explicit equal_to(const element_type store_value): // no noexcept as element may allocate and potentially throw when copied
-				value(store_value)
-			{}
-
-			bool operator() (const element_type compare_value) const PLF_NOEXCEPT
-			{
-				return value == compare_value;
-			}
-		};
-
-
-
-		// To enable conversion to void * when allocator supplies non-raw pointers:
-		template <class source_pointer_type>
-		static PLF_CONSTFUNC void * void_cast(const source_pointer_type source_pointer) PLF_NOEXCEPT
-		{
-			#ifdef PLF_CPP20_SUPPORT
-				return static_cast<void *>(std::to_address(source_pointer));
-			#else
-				return static_cast<void *>(&*source_pointer);
-			#endif
+			return a < b;
 		}
+	};
 
 
+
+	template<class element_type>
+	struct equal_to
+	{
+		const element_type value;
+
+		explicit equal_to(const element_type store_value): // no noexcept as element may allocate and potentially throw when copied
+			value(store_value)
+		{}
+
+		bool operator() (const element_type compare_value) const PLF_NOEXCEPT
+		{
+			return value == compare_value;
+		}
+	};
+
+
+
+	// To enable conversion to void * when allocator supplies non-raw pointers:
+	template <class source_pointer_type>
+	static PLF_CONSTFUNC void * void_cast(const source_pointer_type source_pointer) PLF_NOEXCEPT
+	{
+		#ifdef PLF_CPP20_SUPPORT
+			return static_cast<void *>(std::to_address(source_pointer));
+		#else
+			return static_cast<void *>(&*source_pointer);
+		#endif
+	}
+
+
+
+	#ifdef PLF_MOVE_SEMANTICS_SUPPORT
+		template <class iterator_type>
+		PLF_CONSTFUNC std::move_iterator<iterator_type> make_move_iterator(iterator_type it)
+		{
+			return std::move_iterator<iterator_type>(std::move(it));
+		}
+	#endif
+
+
+
+	struct limits
+	{
+		size_t min, max;
+		PLF_CONSTFUNC limits(const size_t minimum, const size_t maximum) PLF_NOEXCEPT : min(minimum), max(maximum) {}
+	};
+
+
+	enum priority { performance = 1, memory_use = 4};
+#endif
+
+
+
+template <class iterator_type>
+#ifdef PLF_TYPE_TRAITS_SUPPORT
+	PLF_CONSTFUNC inline void copy_or_move(const typename plf::enable_if<std::is_same<typename std::iterator_traits<iterator_type>::iterator_category, std::random_access_iterator_tag>::value, iterator_type>::type destination, const iterator_type source)
+#else
+	PLF_CONSTFUNC inline void copy_or_move(const iterator_type destination, const iterator_type source)
+#endif
+{
+	#ifdef PLF_TYPE_TRAITS_SUPPORT
+		typedef typename iterator_type::value_type value_type;
 
 		#ifdef PLF_MOVE_SEMANTICS_SUPPORT
-			template <class iterator_type>
-			PLF_CONSTFUNC std::move_iterator<iterator_type> make_move_iterator(iterator_type it)
-			{
-				return std::move_iterator<iterator_type>(std::move(it));
-			}
-		#endif
-	#endif
-
-
-
-	template <class iterator_type>
-	#ifdef PLF_TYPE_TRAITS_SUPPORT
-		PLF_CONSTFUNC inline void copy_or_move(const typename plf::enable_if<std::is_same<typename std::iterator_traits<iterator_type>::iterator_category, std::random_access_iterator_tag>::value, iterator_type>::type destination, const iterator_type source)
-	#else
-		PLF_CONSTFUNC inline void copy_or_move(const iterator_type destination, const iterator_type source)
-	#endif
-	{
-		#ifdef PLF_TYPE_TRAITS_SUPPORT
-			typedef typename iterator_type::value_type value_type;
-
-			#ifdef PLF_MOVE_SEMANTICS_SUPPORT
-				#ifdef PLF_EXCEPTIONS_SUPPORT
-					if PLF_CONSTEXPR (!std::is_trivially_copy_assignable<value_type>::value && std::is_nothrow_move_assignable<value_type>::value)
-				#else
-					if PLF_CONSTEXPR (!std::is_trivially_copy_assignable<value_type>::value && std::is_move_assignable<value_type>::value)
-				#endif
-				{
-					*destination = std::move(*source);
-				}
-				else
-			#endif
 			#ifdef PLF_EXCEPTIONS_SUPPORT
-				if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
-				{
-					const value_type temp = *destination;
-
-					try
-					{
-						*destination = *source;
-					}
-					catch (...)
-					{
-						*destination = temp;
-						throw;
-					}
-				}
-				else
-			#endif
-		#endif
-		{
-			*destination = *source;
-		}
-	}
-
-
-
-	template <class container_type, class iterator_type>
-	PLF_CONSTFUNC iterator_type single_reorderase(container_type &container, const iterator_type location)
-	{
-		const iterator_type back = container.end() - 1;
-
-		if (location != back)
-		{
-			plf::copy_or_move(location, back);
-		}
-
-		container.pop_back();
-		return location;
-	}
-
-
-
-	template <class container_type>
-	#ifdef PLF_TYPE_TRAITS_SUPPORT
-		PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type location)
-	#else
-		PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename container_type::iterator location)
-	#endif
-	{
-		return plf::single_reorderase(container, location);
-	}
-
-
-
-	template <class value_type, class allocator_type>
-	PLF_CONSTFUNC inline typename std::deque<value_type, allocator_type>::iterator reorderase(typename std::deque<value_type, allocator_type> &container, typename std::deque<value_type, allocator_type>::iterator location)
-	{
-		if (location == container.begin())
-		{
-			container.pop_front();
-			return container.begin();
-		}
-
-		return plf::single_reorderase(container, location);
-	}
-
-
-
-	#ifndef PLF_CPP20_SUPPORT
-		template <typename value_type>
-		struct is_deque
-		{
-			static const bool value = false;
-		};
-
-
-		template <typename value_type, typename allocator_type>
-		struct is_deque<std::deque<value_type, allocator_type> >
-		{
-			static const bool value = true;
-		};
-	#endif
-
-
-
-	template <class container_type, class iterator_type>
-	PLF_CONSTFUNC iterator_type range_reorderase(container_type &container, const iterator_type first, const iterator_type last)
-	{
-		typedef typename container_type::size_type size_type;
-		typedef typename container_type::difference_type difference_type;
-		const difference_type distance = static_cast<difference_type>(last - first);
-
-		if (distance == 0)
-		{
-			return first;
-		}
-		else if (distance == 1)
-		{
-			return plf::reorderase(container, first);
-		}
-
-		const iterator_type end = container.end();
-
-		if (last == end)
-		{
-			return container.erase(first, last);
-		}
-
-		const iterator_type first_replacement = end - distance;
-		const size_type copy_distance = static_cast<size_type>((last > first_replacement) ? distance - (last - first_replacement) : distance);
-
-		#ifdef PLF_TYPE_TRAITS_SUPPORT
-			typedef typename container_type::value_type value_type;
-
-			#ifdef PLF_CPP20_SUPPORT
-				if PLF_CONSTEXPR (std::is_same<typename std::iterator_traits<iterator_type>::iterator_category, std::contiguous_iterator_tag>::value && std::is_trivially_copy_assignable<value_type>::value)
+				if PLF_CONSTEXPR (!std::is_trivially_copy_assignable<value_type>::value && std::is_nothrow_move_assignable<value_type>::value)
 			#else
-				if PLF_CONSTEXPR (!plf::is_deque<container_type>::value && std::is_trivially_copy_assignable<value_type>::value)
+				if PLF_CONSTEXPR (!std::is_trivially_copy_assignable<value_type>::value && std::is_move_assignable<value_type>::value)
 			#endif
 			{
-				#ifdef PLF_ALIGNMENT_SUPPORT
-					PLF_CONSTEXPR const size_type aligned_size = (alignof(value_type) > sizeof(value_type)) ? alignof(value_type) : sizeof(value_type); // To compensate for possible overalignment
-				#else
-					PLF_CONSTEXPR const size_type aligned_size = sizeof(value_type);
-				#endif
-
-				std::memmove(static_cast<void *>(&*first), static_cast<void *>(&*(end - copy_distance)), copy_distance * aligned_size);
+				*destination = std::move(*source);
 			}
+			else
+		#endif
+		#ifdef PLF_EXCEPTIONS_SUPPORT
+			if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
+			{
+				const value_type temp = *destination;
+
+				try
+				{
+					*destination = *source;
+				}
+				catch (...)
+				{
+					*destination = temp;
+					throw;
+				}
+			}
+			else
+		#endif
+	#endif
+	{
+		*destination = *source;
+	}
+}
+
+
+
+template <class container_type, class iterator_type>
+PLF_CONSTFUNC iterator_type single_reorderase(container_type &container, const iterator_type location)
+{
+	const iterator_type back = container.end() - 1;
+
+	if (location != back)
+	{
+		plf::copy_or_move(location, back);
+	}
+
+	container.pop_back();
+	return location;
+}
+
+
+
+template <class container_type>
+#ifdef PLF_TYPE_TRAITS_SUPPORT
+	PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type location)
+#else
+	PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename container_type::iterator location)
+#endif
+{
+	return plf::single_reorderase(container, location);
+}
+
+
+
+template <class value_type, class allocator_type>
+PLF_CONSTFUNC inline typename std::deque<value_type, allocator_type>::iterator reorderase(typename std::deque<value_type, allocator_type> &container, typename std::deque<value_type, allocator_type>::iterator location)
+{
+	if (location == container.begin())
+	{
+		container.pop_front();
+		return container.begin();
+	}
+
+	return plf::single_reorderase(container, location);
+}
+
+
+
+#ifndef PLF_CPP20_SUPPORT
+	template <typename value_type>
+	struct is_deque
+	{
+		static const bool value = false;
+	};
+
+
+	template <typename value_type, typename allocator_type>
+	struct is_deque<std::deque<value_type, allocator_type> >
+	{
+		static const bool value = true;
+	};
+#endif
+
+
+
+template <class container_type, class iterator_type>
+PLF_CONSTFUNC iterator_type range_reorderase(container_type &container, const iterator_type first, const iterator_type last)
+{
+	typedef typename container_type::size_type size_type;
+	typedef typename container_type::difference_type difference_type;
+	const difference_type distance = static_cast<difference_type>(last - first);
+
+	if (distance == 0)
+	{
+		return first;
+	}
+	else if (distance == 1)
+	{
+		return plf::reorderase(container, first);
+	}
+
+	const iterator_type end = container.end();
+
+	if (last == end)
+	{
+		return container.erase(first, last);
+	}
+
+	const iterator_type first_replacement = end - distance;
+	const size_type copy_distance = static_cast<size_type>((last > first_replacement) ? distance - (last - first_replacement) : distance);
+
+	#ifdef PLF_TYPE_TRAITS_SUPPORT
+		typedef typename container_type::value_type value_type;
+
+		#ifdef PLF_CPP20_SUPPORT
+			if PLF_CONSTEXPR (std::is_same<typename std::iterator_traits<iterator_type>::iterator_category, std::contiguous_iterator_tag>::value && std::is_trivially_copyable<value_type>::value)
+		#else
+			if PLF_CONSTEXPR (!plf::is_deque<container_type>::value && std::is_trivially_copyable<value_type>::value)
+		#endif
+		{
+			#ifdef PLF_ALIGNMENT_SUPPORT
+				PLF_CONSTEXPR const size_type aligned_size = (alignof(value_type) > sizeof(value_type)) ? alignof(value_type) : sizeof(value_type); // To compensate for possible overalignment
+			#else
+				PLF_CONSTEXPR const size_type aligned_size = sizeof(value_type);
+			#endif
+
+			std::memcpy(plf::void_cast(first), plf::void_cast(end - copy_distance), copy_distance * aligned_size);
+		}
+		#ifdef PLF_MOVE_SEMANTICS_SUPPORT
+			#ifdef PLF_EXCEPTIONS_SUPPORT
+				else if PLF_CONSTEXPR (!std::is_trivially_copyable<value_type>::value && std::is_nothrow_move_assignable<value_type>::value)
+			#else
+				else if PLF_CONSTEXPR (!std::is_trivially_copyable<value_type>::value && std::is_move_assignable<value_type>::value)
+			#endif
+			{
+				std::copy(plf::make_move_iterator(end - copy_distance), plf::make_move_iterator(end), first);
+			}
+		#endif
+		#ifdef PLF_EXCEPTIONS_SUPPORT
+			else if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
+			{
+				typedef typename container_type::allocator_type allocator_type;
+				allocator_type alloc;
+				value_type * const temp = PLF_ALLOCATE(allocator_type, alloc, copy_distance, &*end);
+				std::uninitialized_copy(first, first + copy_distance, temp);
+
+				try
+				{
+					std::copy(end - copy_distance, end, first);
+				}
+				catch (...)
+				{
+					std::copy(temp, temp + copy_distance, first);
+
+					if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
+					{
+						for (value_type *current = temp, *temp_end = temp + copy_distance; current != temp_end; ++current)
+						{
+							PLF_DESTROY(allocator_type, alloc, current);
+						}
+					}
+					
+					PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
+					throw;
+				}
+
+				if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
+				{
+					for (value_type *current = temp, *temp_end = temp + copy_distance; current != temp_end; ++current)
+					{
+						PLF_DESTROY(allocator_type, alloc, current);
+					}
+				}
+				
+				PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
+			}
+		#endif
+		else
+	#endif
+	{
+		std::copy(end - copy_distance, end, first);
+	}
+
+	return container.erase(end - distance, end);
+}
+
+
+
+template <class container_type>
+#ifdef PLF_TYPE_TRAITS_SUPPORT
+	PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type first, const typename container_type::iterator last)
+#else
+	PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename container_type::iterator first, const typename container_type::iterator last)
+#endif
+{
+	return plf::range_reorderase(container, first, last);
+}
+
+
+
+template <class value_type, class allocator_type>
+PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reorderase(std::deque<value_type, allocator_type> &container, const typename std::deque<value_type, allocator_type>::iterator first, const typename std::deque<value_type, allocator_type>::iterator last)
+{
+	typedef typename std::deque<value_type, allocator_type> container_type;
+	typedef typename container_type::size_type size_type;
+	const typename container_type::iterator begin = container.begin();
+	
+	if (first == begin)
+	{
+		container.erase(first, last);
+		return last;
+	}
+	
+	const size_type distance = last - first;
+	
+	if (first >= begin + distance)
+	{
+		return plf::range_reorderase(container, first, last);
+	}
+	else
+	{
+		const size_type copy_distance = static_cast<size_type>(first - begin);
+
+		#ifdef PLF_TYPE_TRAITS_SUPPORT
 			#ifdef PLF_MOVE_SEMANTICS_SUPPORT
 				#ifdef PLF_EXCEPTIONS_SUPPORT
-					else if PLF_CONSTEXPR (!std::is_trivially_copy_assignable<value_type>::value && std::is_nothrow_move_assignable<value_type>::value)
+					if PLF_CONSTEXPR (!std::is_trivially_copyable<value_type>::value && std::is_nothrow_move_assignable<value_type>::value)
 				#else
-					else if PLF_CONSTEXPR (!std::is_trivially_copy_assignable<value_type>::value && std::is_move_assignable<value_type>::value)
+					if PLF_CONSTEXPR (!std::is_trivially_copyable<value_type>::value && std::is_move_assignable<value_type>::value)
 				#endif
 				{
-					std::copy(plf::make_move_iterator(end - copy_distance), plf::make_move_iterator(end), first);
+					std::copy(plf::make_move_iterator(begin), plf::make_move_iterator(begin + copy_distance), last - copy_distance);
 				}
 			#endif
 			#ifdef PLF_EXCEPTIONS_SUPPORT
 				else if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
 				{
-					typedef typename container_type::allocator_type allocator_type;
 					allocator_type alloc;
-					value_type * const temp = PLF_ALLOCATE(allocator_type, alloc, copy_distance, &*end);
-					std::uninitialized_copy(first, first + copy_distance, temp);
+					value_type * const temp = PLF_ALLOCATE(allocator_type, alloc, copy_distance, &*begin);
+					std::uninitialized_copy(first, last, temp);
 
 					try
 					{
-						std::copy(end - copy_distance, end, first);
+						std::copy(begin, begin + copy_distance, last - copy_distance);
 					}
 					catch (...)
 					{
@@ -432,74 +538,49 @@ namespace plf
 			else
 		#endif
 		{
-			std::copy(end - copy_distance, end, first);
+			std::copy(begin, begin + copy_distance, last - copy_distance);
 		}
 
-		return container.erase(end - distance, end);
+		return container.erase(begin, begin + copy_distance);
 	}
+}
 
 
 
-	template <class container_type>
-	#ifdef PLF_TYPE_TRAITS_SUPPORT
-		PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type first, const typename container_type::iterator last)
-	#else
-		PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename container_type::iterator first, const typename container_type::iterator last)
-	#endif
+template <class container_type, class predicate_function>
+PLF_CONSTFUNC void reorderase_all_if(container_type &container, predicate_function predicate)
+{
+	typedef typename container_type::iterator iterator;
+	const iterator end = container.end();
+	iterator current_back = end;
+
+	for (iterator current = container.begin(); current != current_back; ++current)
 	{
-		return plf::range_reorderase(container, first, last);
-	}
-
-
-
-	template <class value_type, class allocator_type>
-	PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reorderase(std::deque<value_type, allocator_type> &container, const typename std::deque<value_type, allocator_type>::iterator first, const typename std::deque<value_type, allocator_type>::iterator last)
-	{
-		if (first == container.begin())
+		if (predicate(*current))
 		{
-			container.erase(first, last);
-			return last;
-		}
+			while (predicate(*--current_back) && current_back != current) // Check for same condition at container back()
+			{}
 
-		return plf::range_reorderase(container, first, last);
-	}
-
-
-
-	template <class container_type, class predicate_function>
-	PLF_CONSTFUNC void reorderase_all_if(container_type &container, predicate_function predicate)
-	{
-		typedef typename container_type::iterator iterator;
-		const iterator end = container.end();
-		iterator current_back = end;
-
-		for (iterator current = container.begin(); current != current_back; ++current)
-		{
-			if (predicate(*current))
+			if (current_back == current)
 			{
-				while (predicate(*--current_back) && current_back != current) // Check for same condition at container back()
-				{}
-
-				if (current_back == current)
-				{
-					break;
-				}
-
-				plf::copy_or_move(current, current_back);
+				break;
 			}
+
+			plf::copy_or_move(current, current_back);
 		}
-
-		container.erase(current_back, end);
 	}
 
+	container.erase(current_back, end);
+}
 
 
-	template <class container_type, class value_type>
-	PLF_CONSTFUNC inline void reorderase_all(container_type &container, const value_type &value)
-	{
-		typedef typename container_type::value_type element_type;
-		plf::reorderase_all_if(container, plf::equal_to<element_type>(static_cast<element_type>(value)));
-	}
+
+template <class container_type, class value_type>
+PLF_CONSTFUNC inline void reorderase_all(container_type &container, const value_type &value)
+{
+	typedef typename container_type::value_type element_type;
+	plf::reorderase_all_if(container, plf::equal_to<element_type>(static_cast<element_type>(value)));
+}
 
 } // plf namespace
 
