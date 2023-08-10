@@ -230,14 +230,6 @@ namespace plf
 	#endif
 
 
-
-	struct limits
-	{
-		size_t min, max;
-		PLF_CONSTFUNC limits(const size_t minimum, const size_t maximum) PLF_NOEXCEPT : min(minimum), max(maximum) {}
-	};
-
-
 	enum priority { performance = 1, memory_use = 4};
 #endif
 
