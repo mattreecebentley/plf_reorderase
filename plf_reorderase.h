@@ -34,9 +34,9 @@
 
 
 #if defined(_MSC_VER) && !defined(__clang__) && !defined(__GNUC__)
-    // Suppress incorrect (unfixed MSVC bug at warning level 4) warnings re: constant expressions in constexpr-if statements
+	 // Suppress incorrect (unfixed MSVC bug at warning level 4) warnings re: constant expressions in constexpr-if statements
 	#pragma warning ( push )
-    #pragma warning ( disable : 4127 )
+	 #pragma warning ( disable : 4127 )
 
 	#if _MSC_VER >= 1600
 		#define PLF_MOVE_SEMANTICS_SUPPORT
@@ -231,6 +231,7 @@ namespace plf
 
 
 	enum priority { performance = 1, memory_use = 4};
+
 #endif
 
 
@@ -416,7 +417,7 @@ PLF_CONSTFUNC iterator_type range_reorderase(container_type &container, const it
 							PLF_DESTROY(allocator_type, alloc, current);
 						}
 					}
-					
+
 					PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
 					throw;
 				}
@@ -428,7 +429,7 @@ PLF_CONSTFUNC iterator_type range_reorderase(container_type &container, const it
 						PLF_DESTROY(allocator_type, alloc, current);
 					}
 				}
-				
+
 				PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
 			}
 		#endif
@@ -461,15 +462,15 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 	typedef typename std::deque<value_type, allocator_type> container_type;
 	typedef typename container_type::size_type size_type;
 	const typename container_type::iterator begin = container.begin();
-	
+
 	if (first == begin)
 	{
 		container.erase(first, last);
 		return last;
 	}
-	
+
 	const size_type distance = last - first;
-	
+
 	if (first >= begin + distance)
 	{
 		return plf::range_reorderase(container, first, last);
@@ -511,7 +512,7 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 								PLF_DESTROY(allocator_type, alloc, current);
 							}
 						}
-						
+
 						PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
 						throw;
 					}
@@ -523,7 +524,7 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 							PLF_DESTROY(allocator_type, alloc, current);
 						}
 					}
-					
+
 					PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
 				}
 			#endif
@@ -539,30 +540,114 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 
 
 
-template <class container_type, class predicate_function>
-PLF_CONSTFUNC void reorderase_all_if(container_type &container, predicate_function predicate)
+// PARTITIONING AND ERASE_IF-equivalents
+
+// Forward-iterator-only variant:
+template <class iterator_type, class predicate_function, class work_function>
+PLF_CONSTFUNC iterator_type inverse_partition(typename plf::enable_if<std::is_same<typename std::iterator_traits<iterator_type>::iterator_category, std::forward_iterator_tag>::value, iterator_type>::type first, iterator_type last, predicate_function predicate, work_function work)
 {
-	typedef typename container_type::iterator iterator;
-	const iterator end = container.end();
-	iterator current_back = end;
-
-	for (iterator current = container.begin(); current != current_back; ++current)
+	for (; !static_cast<bool>(predicate(*first)); ++first)
 	{
-		if (predicate(*current))
+		if (first == last) return first;
+	}
+
+	for (iterator_type it = ++iterator_type(first); it != last; ++it)
+	{
+		if (!static_cast<bool>(predicate(*it)))
 		{
-			while (predicate(*--current_back) && current_back != current) // Check for same condition at container back()
-			{}
-
-			if (current_back == current)
-			{
-				break;
-			}
-
-			plf::copy_or_move(current, current_back);
+			work(first, it);
+			++first;
 		}
 	}
 
-	container.erase(current_back, end);
+	return first;
+}
+
+
+
+template <class iterator_type, class predicate_function, class work_function>
+PLF_CONSTFUNC iterator_type inverse_partition(typename plf::enable_if<!std::is_same<typename std::iterator_traits<iterator_type>::iterator_category, std::forward_iterator_tag>::value, iterator_type>::type first, iterator_type last, predicate_function predicate, work_function work)
+{
+	for (; first != last; ++first)
+	{
+		if (predicate(*first))
+		{
+			while (predicate(*--last)) // Check for same condition at back of range
+			{
+				if (last == first) return last;
+			}
+
+			work(first, last);
+		}
+	}
+
+	return last;
+}
+
+
+
+template <class iterator_type>
+struct iter_swap_functor
+{
+	PLF_CONSTFUNC void operator() (const iterator_type a, const iterator_type b)
+	{
+		std::iter_swap(a, b);
+	}
+};
+
+
+
+template <class iterator_type>
+struct copy_or_move_functor
+{
+	PLF_CONSTFUNC void operator() (const iterator_type a, const iterator_type b)
+	{
+		plf::copy_or_move(a, b);
+	}
+};
+
+
+
+template <class functor_type>
+struct functor_negator
+{
+	 functor_type &functor;
+
+	 PLF_CONSTFUNC functor_negator(functor_type &func) PLF_NOEXCEPT :
+		functor(func)
+	{}
+
+	 template <typename argument_type>
+	 PLF_CONSTFUNC bool operator () (argument_type &argument)
+	{
+		return !static_cast<bool>(functor(argument));
+	}
+};
+
+
+
+template <class iterator_type, class predicate_function>
+PLF_CONSTFUNC iterator_type partition(iterator_type first, iterator_type last, predicate_function predicate)
+{
+	return plf::inverse_partition(first, last, plf::functor_negator(predicate), plf::iter_swap_functor<iterator_type>());
+}
+
+
+
+template <class iterator_type, class predicate_function>
+PLF_CONSTFUNC iterator_type destructive_partition(iterator_type first, iterator_type last, predicate_function predicate)
+{
+	return plf::inverse_partition(first, last, plf::functor_negator(predicate), plf::copy_or_move_functor<iterator_type>());
+}
+
+
+
+template <class container_type, class predicate_function>
+PLF_CONSTFUNC inline void reorderase_all_if(container_type &container, predicate_function predicate)
+{
+	typedef typename container_type::iterator iterator_type;
+	const iterator_type end = container.end();
+	container.erase(plf::inverse_partition(container.begin(), end, predicate, plf::copy_or_move_functor<iterator_type>()), end);
 }
 
 
@@ -570,9 +655,49 @@ PLF_CONSTFUNC void reorderase_all_if(container_type &container, predicate_functi
 template <class container_type, class value_type>
 PLF_CONSTFUNC inline void reorderase_all(container_type &container, const value_type &value)
 {
-	typedef typename container_type::value_type element_type;
+	typedef typename container_type::value_type element_type; // element type potentially different from supplied value
 	plf::reorderase_all_if(container, plf::equal_to<element_type>(static_cast<element_type>(value)));
 }
+
+
+
+template <class container_type, class iterator_type, class predicate_function>
+PLF_CONSTFUNC inline void reorderase_all_if(container_type &container, iterator_type first, iterator_type last, predicate_function predicate)
+{
+	iterator_type end = container.end();
+
+	if (last == end)
+	{
+		container.erase(plf::inverse_partition(first, end, predicate, plf::copy_or_move_functor<iterator_type>()), end);
+		return;
+	}
+
+	for (; first != last; ++first)
+	{
+		if (predicate(*first))
+		{
+			while (predicate(*--end)) // Check for same condition at back of range
+			{
+				if (end == first) return;
+			}
+
+			if (end < last) last = end;
+
+			plf::copy_or_move(first, end);
+			plf::single_reorderase(container, end);
+		}
+	}
+}
+
+
+
+template <class container_type, class iterator_type, class value_type>
+PLF_CONSTFUNC inline void reorderase_all(container_type &container, iterator_type first, iterator_type last, const value_type &value)
+{
+	typedef typename container_type::value_type element_type;
+	plf::reorderase_all_if(container, first, last, plf::equal_to<element_type>(static_cast<element_type>(value)));
+}
+
 
 } // plf namespace
 
