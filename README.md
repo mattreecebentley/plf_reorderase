@@ -42,7 +42,7 @@ constexpr void reorderase_all (container_type &container, iterator_type first, i
 * template <class iterator_type, class predicate_function>
 constexpr iterator_type partition (iterator_type first, iterator_type last, predicate_function predicate)
 
-My personal algorithm for partitioning. Use wherever you would use std::partition.
+  My personal algorithm for partitioning. Use wherever you would use std::partition.
 
 * template <class iterator_type, class predicate_function>
 constexpr iterator_type destructive_partition (iterator_type first, iterator_type last, predicate_function predicate)
