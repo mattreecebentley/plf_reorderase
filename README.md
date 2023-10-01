@@ -28,3 +28,23 @@ constexpr void reorderase_all_if (container_type &container, predicate_function 
 constexpr void reorderase_all (container_type &container, value_type value)
 
   Erase all elements in a container which are equal to value. Use wherever you would use std::erase normally.
+
+* template <class container_type, class iterator_type, class predicate_function>
+constexpr void reorderase_all_if (container_type &container, iterator_type first, iterator_type last, predicate_function predicate)
+
+  Erase all elements in a sub-range of a container which match the predicate. Equivalent to std::erase_if, if there were an equivalent of std::erase_if for sub-ranges of containers. Example using a lambda:
+
+* template <class container_type, class iterator_type, class value_type>
+constexpr void reorderase_all (container_type &container, iterator_type first, iterator_type last, value_type value)
+
+  Erase all elements in a sub-range of a container which are equal to value. Will use appropriate elements from the back of the container to fill the holes. Equivalent to std::erase, if there were an equivalent of std::erase for sub-ranges of containers. value must be able to be static_cast'd to container_type::value_type.
+  
+* template <class iterator_type, class predicate_function>
+constexpr iterator_type partition (iterator_type first, iterator_type last, predicate_function predicate)
+
+My personal algorithm for partitioning. Use wherever you would use std::partition.
+
+* template <class iterator_type, class predicate_function>
+constexpr iterator_type destructive_partition (iterator_type first, iterator_type last, predicate_function predicate)
+
+  Destructively partition all elements which match the predicate in a range ie. move elements from the back of the range (which don't match the predicate) on top of elements matching the predicate, leaving a trailing range of moved-from elements at the back of the range. Use wherever you would use std::partition but only if you don't want to preserve the elements which would be, in std::partition, moved to the back of the range. Returns an iterator pointing to the first moved-from element in the trailing range.
