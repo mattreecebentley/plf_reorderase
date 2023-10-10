@@ -38,6 +38,16 @@ constexpr void reorderase_all_if (container_type &container, iterator_type first
 constexpr void reorderase_all (container_type &container, iterator_type first, iterator_type last, value_type value)
 
   Erase all elements in a sub-range of a container which are equal to value. Will use appropriate elements from the back of the container to fill the holes. Equivalent to std::erase, if there were an equivalent of std::erase for sub-ranges of containers. value must be able to be static_cast'd to container_type::value_type.
+
+* template <class container_type, class iterator_type, class predicate_function>
+constexpr void reorderase_all_if (container_type &container, iterator_type first, iterator_type last, predicate_function predicate)
+
+  Erase all elements in a sub-range of a container which match the predicate. Equivalent to std::erase_if, if there were an equivalent of std::erase_if for sub-ranges of containers.
+
+* template <class container_type, class iterator_type, class value_type>
+constexpr void reorderase_all (container_type &container, iterator_type first, iterator_type last, value_type value)
+
+  Erase all elements in a sub-range of a container which are equal to value. Will use appropriate elements from the back of the container to fill the holes. Equivalent to std::erase, if there were an equivalent of std::erase for sub-ranges of containers. value must be able to be static_cast'd to container_type::value_type. 
   
 * template <class iterator_type, class predicate_function>
 constexpr iterator_type partition (iterator_type first, iterator_type last, predicate_function predicate)
