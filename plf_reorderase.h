@@ -626,8 +626,9 @@ struct functor_negator
 
 
 
+
 template <class iterator_type, class predicate_function>
-PLF_CONSTFUNC iterator_type partition(iterator_type first, iterator_type last, predicate_function predicate)
+PLF_CONSTFUNC inline iterator_type partition(iterator_type first, iterator_type last, predicate_function predicate)
 {
 	return plf::inverse_partition(first, last, plf::functor_negator(predicate), plf::iter_swap_functor<iterator_type>());
 }
@@ -635,7 +636,7 @@ PLF_CONSTFUNC iterator_type partition(iterator_type first, iterator_type last, p
 
 
 template <class iterator_type, class predicate_function>
-PLF_CONSTFUNC iterator_type destructive_partition(iterator_type first, iterator_type last, predicate_function predicate)
+PLF_CONSTFUNC inline iterator_type destructive_partition(iterator_type first, iterator_type last, predicate_function predicate)
 {
 	return plf::inverse_partition(first, last, plf::functor_negator(predicate), plf::copy_or_move_functor<iterator_type>());
 }
@@ -643,34 +644,41 @@ PLF_CONSTFUNC iterator_type destructive_partition(iterator_type first, iterator_
 
 
 template <class container_type, class predicate_function>
-PLF_CONSTFUNC inline void reorderase_all_if(container_type &container, predicate_function predicate)
+PLF_CONSTFUNC inline typename container_type::size_type reorderase_all_if(container_type &container, predicate_function predicate)
 {
 	typedef typename container_type::iterator iterator_type;
-	const iterator_type end = container.end();
-	container.erase(plf::inverse_partition(container.begin(), end, predicate, plf::copy_or_move_functor<iterator_type>()), end);
+	const iterator_type end = container.end(), begin = plf::inverse_partition(container.begin(), end, predicate, plf::copy_or_move_functor<iterator_type>());
+	const typename container_type::size_type range_size = std::distance(begin, end);
+	container.erase(begin, end);
+	return range_size;
 }
 
 
 
 template <class container_type, class value_type>
-PLF_CONSTFUNC inline void reorderase_all(container_type &container, const value_type &value)
+PLF_CONSTFUNC inline typename container_type::size_type reorderase_all(container_type &container, const value_type &value)
 {
-	typedef typename container_type::value_type element_type; // element type potentially different from supplied value
-	plf::reorderase_all_if(container, plf::equal_to<element_type>(static_cast<element_type>(value)));
+	typedef typename container_type::value_type element_type;
+	return plf::reorderase_all_if(container, plf::equal_to<element_type>(static_cast<element_type>(value)));
 }
 
 
 
 template <class container_type, class iterator_type, class predicate_function>
-PLF_CONSTFUNC inline void reorderase_all_if(container_type &container, iterator_type first, iterator_type last, predicate_function predicate)
+PLF_CONSTFUNC typename container_type::size_type reorderase_all_if(container_type &container, iterator_type first, iterator_type last, predicate_function predicate)
 {
+	typedef typename container_type::size_type size_type;
 	iterator_type end = container.end();
 
 	if (last == end)
 	{
-		container.erase(plf::inverse_partition(first, end, predicate, plf::copy_or_move_functor<iterator_type>()), end);
-		return;
+		const iterator_type begin = plf::inverse_partition(first, end, predicate, plf::copy_or_move_functor<iterator_type>());
+		const size_type range_size = std::distance(begin, end);
+		container.erase(begin, end);
+		return range_size;
 	}
+
+	size_type count = 0;
 
 	for (; first != last; ++first)
 	{
@@ -678,24 +686,27 @@ PLF_CONSTFUNC inline void reorderase_all_if(container_type &container, iterator_
 		{
 			while (predicate(*--end)) // Check for same condition at back of range
 			{
-				if (end == first) return;
+				if (end == first) return count;
 			}
 
 			if (end < last) last = end;
 
 			plf::copy_or_move(first, end);
 			plf::single_reorderase(container, end);
+			++count;
 		}
 	}
+
+	return count;
 }
 
 
 
 template <class container_type, class iterator_type, class value_type>
-PLF_CONSTFUNC inline void reorderase_all(container_type &container, iterator_type first, iterator_type last, const value_type &value)
+PLF_CONSTFUNC typename container_type::size_type reorderase_all(container_type &container, iterator_type first, iterator_type last, const value_type &value)
 {
 	typedef typename container_type::value_type element_type;
-	plf::reorderase_all_if(container, first, last, plf::equal_to<element_type>(static_cast<element_type>(value)));
+	return plf::reorderase_all_if(container, first, last, plf::equal_to<element_type>(static_cast<element_type>(value)));
 }
 
 

@@ -98,6 +98,6 @@ int main()
 	{
 		std::cout << *current << ", ";
 	}
-
+	
 	std::cin.get();
 }
