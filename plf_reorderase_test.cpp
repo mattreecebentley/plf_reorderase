@@ -2,6 +2,8 @@
 #include <iostream>
 #include <vector>
 #include <deque>
+#include <algorithm> // std::sort
+#include <string>
 
 struct small_struct
 {
@@ -26,6 +28,71 @@ struct small_struct
 
 	small_struct(const unsigned int num) noexcept: number(num) {};
 };
+
+
+// Element types which take each of the copy paths in deque range reorderase:
+struct movable_struct // not trivially copyable, nothrow move-assignable
+{
+	int number;
+	std::string text;
+
+	movable_struct(const int num): number(num), text(40, 'a') {}
+	bool operator < (const movable_struct &rh) const { return number < rh.number; }
+	bool operator == (const movable_struct &rh) const { return number == rh.number; }
+};
+
+
+struct copy_only_struct // copy assignment is not noexcept and there is no move assignment, so a temporary buffer is used
+{
+	int number;
+
+	copy_only_struct(const int num): number(num) {}
+	copy_only_struct(const copy_only_struct &source): number(source.number) {}
+	copy_only_struct & operator = (const copy_only_struct &source) { number = source.number; return *this; }
+	bool operator < (const copy_only_struct &rh) const { return number < rh.number; }
+	bool operator == (const copy_only_struct &rh) const { return number == rh.number; }
+};
+
+
+
+// Range-erase every sub-range of deques of up to 12 elements, including ranges which start closer to the front than their length, and check the remaining elements:
+template <class element_type>
+bool test_deque_range_reorderase(const char *type_name)
+{
+	for (int size = 1; size != 13; ++size)
+	{
+		for (int first = 0; first != size; ++first)
+		{
+			for (int last = first; last != size + 1; ++last)
+			{
+				std::deque<element_type> deque_test, expected;
+
+				for (int number = 0; number != size; ++number)
+				{
+					deque_test.push_back(element_type(number));
+
+					if (number < first || number >= last)
+					{
+						expected.push_back(element_type(number));
+					}
+				}
+
+				plf::reorderase(deque_test, deque_test.begin() + first, deque_test.begin() + last);
+				std::sort(deque_test.begin(), deque_test.end());
+
+				if (deque_test != expected)
+				{
+					std::cout << "Deque range reorderase test failed for " << type_name << ": size " << size << ", erasing [" << first << ", " << last << ")\n";
+					return false;
+				}
+			}
+		}
+	}
+
+	std::cout << "Deque range reorderase test passed for " << type_name << "\n";
+	return true;
+}
+
 
 
 int main()
@@ -99,5 +166,15 @@ int main()
 		std::cout << *current << ", ";
 	}
 	
+	std::cout << "\n";
+
+
+	// Test range erase with deque:
+	if (!test_deque_range_reorderase<int>("int") || !test_deque_range_reorderase<movable_struct>("movable_struct") || !test_deque_range_reorderase<copy_only_struct>("copy_only_struct"))
+	{
+		std::cin.get();
+		return 1;
+	}
+
 	std::cin.get();
 }

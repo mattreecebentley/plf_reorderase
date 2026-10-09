@@ -301,7 +301,7 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 				{
 					allocator_type alloc;
 					value_type * const temp = PLF_ALLOCATE(allocator_type, alloc, copy_distance, &*begin);
-					plf::uninitialized_copy(first, last, temp, alloc);
+					plf::uninitialized_copy(last - copy_distance, last, temp, alloc); // Back up the elements which are about to be overwritten
 
 					try
 					{
@@ -309,7 +309,7 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 					}
 					catch (...)
 					{
-						std::copy(temp, temp + copy_distance, first);
+						std::copy(temp, temp + copy_distance, last - copy_distance);
 
 						if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
 						{
@@ -340,7 +340,7 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 			std::copy(begin, begin + copy_distance, last - copy_distance);
 		}
 
-		return container.erase(begin, begin + copy_distance);
+		return container.erase(begin, last - copy_distance); // The front elements have been copied to the end of the range, so erase everything before them
 	}
 }
 
