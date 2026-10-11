@@ -269,11 +269,11 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 	typedef typename container_type::size_type size_type;
 	const typename container_type::iterator begin = container.begin();
 
-	if (first == begin)
+	if (first == begin || last == container.end())
 	{
-		container.erase(first, last);
-		return last;
+		return container.erase(first, last);
 	}
+
 
 	const size_type distance = last - first;
 
@@ -295,9 +295,10 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 				{
 					std::copy(plf::make_move_iterator(begin), plf::make_move_iterator(begin + copy_distance), last - copy_distance);
 				}
+				else
 			#endif
 			#ifdef PLF_EXCEPTIONS_SUPPORT
-				else if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
+				if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
 				{
 					allocator_type alloc;
 					value_type * const temp = PLF_ALLOCATE(allocator_type, alloc, copy_distance, &*begin);
@@ -337,7 +338,7 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 			else
 		#endif
 		{
-			std::copy(begin, begin + copy_distance, last - copy_distance);
+			std::copy(begin, first, last - copy_distance);
 		}
 
 		return container.erase(begin, last - copy_distance); // The front elements have been copied to the end of the range, so erase everything before them
