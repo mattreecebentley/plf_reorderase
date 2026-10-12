@@ -95,6 +95,56 @@ bool test_deque_range_reorderase(const char *type_name)
 
 
 
+// Erase the 1s from every sub-range of every container of up to 8 zeroes and ones, and check the count and the remaining elements. The 1s outside of the sub-range must stay:
+template <class container_type>
+bool test_ranged_reorderase_all(const char *container_name)
+{
+	for (int size = 1; size != 9; ++size)
+	{
+		for (int bits = 0; bits != (1 << size); ++bits)
+		{
+			for (int first = 0; first != size + 1; ++first)
+			{
+				for (int last = first; last != size + 1; ++last)
+				{
+					container_type container_test, expected;
+					std::size_t expected_count = 0;
+
+					for (int index = 0; index != size; ++index)
+					{
+						const int number = (bits >> index) & 1;
+						container_test.push_back(typename container_type::value_type(number));
+
+						if (number == 1 && index >= first && index < last)
+						{
+							++expected_count;
+						}
+						else
+						{
+							expected.push_back(typename container_type::value_type(number));
+						}
+					}
+
+					const std::size_t count = plf::reorderase_all(container_test, container_test.begin() + first, container_test.begin() + last, 1);
+					std::sort(container_test.begin(), container_test.end());
+					std::sort(expected.begin(), expected.end());
+
+					if (count != expected_count || container_test != expected)
+					{
+						std::cout << "Ranged reorderase_all test failed for " << container_name << ": size " << size << ", bits " << bits << ", erasing 1s from [" << first << ", " << last << ")\n";
+						return false;
+					}
+				}
+			}
+		}
+	}
+
+	std::cout << "Ranged reorderase_all test passed for " << container_name << "\n";
+	return true;
+}
+
+
+
 int main()
 {
 	std::vector<int> temp({1, 5, 6, 8, 10, 20, 8, 2, 2, 2, 8});
@@ -171,6 +221,14 @@ int main()
 
 	// Test range erase with deque:
 	if (!test_deque_range_reorderase<int>("int") || !test_deque_range_reorderase<movable_struct>("movable_struct") || !test_deque_range_reorderase<copy_only_struct>("copy_only_struct"))
+	{
+		std::cin.get();
+		return 1;
+	}
+
+
+	// Test sub-range reorderase_all against every pattern of small containers:
+	if (!test_ranged_reorderase_all<std::vector<int> >("vector of int") || !test_ranged_reorderase_all<std::deque<int> >("deque of int") || !test_ranged_reorderase_all<std::vector<movable_struct> >("vector of movable_struct") || !test_ranged_reorderase_all<std::deque<movable_struct> >("deque of movable_struct") || !test_ranged_reorderase_all<std::vector<copy_only_struct> >("vector of copy_only_struct") || !test_ranged_reorderase_all<std::deque<copy_only_struct> >("deque of copy_only_struct"))
 	{
 		std::cin.get();
 		return 1;

@@ -475,7 +475,7 @@ template <class container_type, class iterator_type, class predicate_function>
 PLF_CONSTFUNC typename container_type::size_type reorderase_all_if(container_type &container, iterator_type first, iterator_type last, predicate_function predicate)
 {
 	typedef typename container_type::size_type size_type;
-	iterator_type end = container.end();
+	const iterator_type end = container.end();
 
 	if (last == end)
 	{
@@ -491,16 +491,17 @@ PLF_CONSTFUNC typename container_type::size_type reorderase_all_if(container_typ
 	{
 		if (predicate(*first))
 		{
-			while (predicate(*--end)) // Check for same condition at back of range
-			{
-				if (end == first) return count;
-			}
+			const iterator_type back = container.end() - 1; // The back element is outside the range, so it is kept whatever its value
+			const bool range_reaches_end = (back == last);
 
-			if (end < last) last = end;
-
-			plf::copy_or_move(first, end);
-			plf::single_reorderase(container, end);
+			plf::copy_or_move(first, back);
+			container.pop_back();
 			++count;
+
+			if (range_reaches_end) // The rest of the range is now at the end of the container
+			{
+				return count + plf::reorderase_all_if(container, ++first, container.end(), predicate);
+			}
 		}
 	}
 
