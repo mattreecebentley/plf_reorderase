@@ -91,7 +91,8 @@ template <class iterator_type>
 template <class container_type, class iterator_type>
 PLF_CONSTFUNC iterator_type single_reorderase(container_type &container, const iterator_type location)
 {
-	const iterator_type back = container.end() - 1;
+	iterator_type back = container.end();
+	--back;
 
 	if (location == back)
 	{
