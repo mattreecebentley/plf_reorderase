@@ -491,7 +491,8 @@ PLF_CONSTFUNC typename container_type::size_type reorderase_all_if(container_typ
 	{
 		if (predicate(*first))
 		{
-			const iterator_type back = container.end() - 1; // The back element is outside the range, so it is kept whatever its value
+			iterator_type back = container.end();
+			--back; // The back element is outside the range, so it is kept whatever its value
 			const bool range_reaches_end = (back == last);
 
 			plf::copy_or_move(first, back);
