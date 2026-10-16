@@ -147,6 +147,13 @@ bool test_ranged_reorderase_all(const char *container_name)
 
 int main()
 {
+	// Test erase loops with single-element reorderase:
+	if (!test_single_reorderase_erase_loop<std::vector<int> >("vector") || !test_single_reorderase_erase_loop<std::deque<int> >("deque"))
+	{
+		std::cin.get();
+		return 1;
+	}
+
 	std::vector<int> temp({1, 5, 6, 8, 10, 20, 8, 2, 2, 2, 8});
 
 	plf::reorderase_all(temp, 8); // std::erase equivalent
