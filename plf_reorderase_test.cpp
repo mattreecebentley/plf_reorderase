@@ -95,8 +95,67 @@ bool test_deque_range_reorderase(const char *type_name)
 
 
 
+// Single-element reorderase is used like erase() in an erase loop, so the returned iterator has to be usable when the last element is erased:
+template <class container_type>
+bool test_single_reorderase_erase_loop(const char *container_name)
+{
+	for (int size = 1; size != 9; ++size)
+	{
+		for (int bits = 0; bits != (1 << size); ++bits)
+		{
+			container_type container_test;
+			int expected_size = 0;
+
+			for (int index = 0; index != size; ++index)
+			{
+				const int number = (bits >> index) & 1;
+				container_test.push_back(number);
+				expected_size += 1 - number;
+			}
+
+			for (typename container_type::iterator current = container_test.begin(); current != container_test.end();)
+			{
+				if (*current == 1)
+				{
+					current = plf::reorderase(container_test, current);
+				}
+				else
+				{
+					++current;
+				}
+			}
+
+			if (static_cast<int>(container_test.size()) != expected_size || std::count(container_test.begin(), container_test.end(), 1) != 0)
+			{
+				std::cout << "Single reorderase erase loop test failed for " << container_name << ": size " << size << ", bits " << bits << "\n";
+				return false;
+			}
+		}
+
+		container_type single(1, 1); // Erasing the only element
+		const typename container_type::iterator returned = plf::reorderase(single, single.begin());
+
+		if (returned != single.end() || !single.empty())
+		{
+			std::cout << "Single reorderase of the last element test failed for " << container_name << "\n";
+			return false;
+		}
+	}
+
+	std::cout << "Single reorderase erase loop test passed for " << container_name << "\n";
+	return true;
+}
+
+
 int main()
 {
+	// Test erase loops with single-element reorderase:
+	if (!test_single_reorderase_erase_loop<std::vector<int> >("vector") || !test_single_reorderase_erase_loop<std::deque<int> >("deque"))
+	{
+		std::cin.get();
+		return 1;
+	}
+
 	std::vector<int> temp({1, 5, 6, 8, 10, 20, 8, 2, 2, 2, 8});
 
 	plf::reorderase_all(temp, 8); // std::erase equivalent
