@@ -92,12 +92,11 @@ template <class container_type, class iterator_type>
 PLF_CONSTFUNC iterator_type single_reorderase(container_type &container, const iterator_type location)
 {
 	iterator_type back = container.end();
-	--back;
 
-	if (location == back)
+	if (location == --back)
 	{
 		container.pop_back();
-		return container.end(); // location no longer exists, and nothing follows it
+		return container.end(); // new end post-pop
 	}
 
 	plf::copy_or_move(location, back);
