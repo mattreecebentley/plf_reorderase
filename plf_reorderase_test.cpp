@@ -95,6 +95,112 @@ bool test_deque_range_reorderase(const char *type_name)
 
 
 
+// Single-element reorderase is used like erase() in an erase loop, so the returned iterator has to be usable when the last element is erased:
+template <class container_type>
+bool test_single_reorderase_erase_loop(const char *container_name)
+{
+	for (int size = 1; size != 9; ++size)
+	{
+		for (int bits = 0; bits != (1 << size); ++bits)
+		{
+			container_type container_test;
+			int expected_size = 0;
+
+			for (int index = 0; index != size; ++index)
+			{
+				const int number = (bits >> index) & 1;
+				container_test.push_back(number);
+				expected_size += 1 - number;
+			}
+
+			for (typename container_type::iterator current = container_test.begin(); current != container_test.end();)
+			{
+				if (*current == 1)
+				{
+					current = plf::reorderase(container_test, current);
+				}
+				else
+				{
+					++current;
+				}
+			}
+
+			if (static_cast<int>(container_test.size()) != expected_size || std::count(container_test.begin(), container_test.end(), 1) != 0)
+			{
+				std::cout << "Single reorderase erase loop test failed for " << container_name << ": size " << size << ", bits " << bits << "\n";
+				return false;
+			}
+		}
+
+		container_type single(1, 1); // Erasing the only element
+		const typename container_type::iterator returned = plf::reorderase(single, single.begin());
+
+		if (returned != single.end() || !single.empty())
+		{
+			std::cout << "Single reorderase of the last element test failed for " << container_name << "\n";
+			return false;
+		}
+	}
+
+	std::cout << "Single reorderase erase loop test passed for " << container_name << "\n";
+	return true;
+}
+
+
+
+// Range-erase every sub-range of containers of up to 12 elements, and check that the returned iterator points to the element following the erased range (as with erase(first, last)), which is at first's former index, that the elements before the range are unchanged, and the remaining elements:
+template <class container_type>
+bool test_range_reorderase_return(const char *container_name)
+{
+	typedef typename container_type::value_type element_type;
+
+	for (int size = 1; size != 13; ++size)
+	{
+		for (int first = 0; first != size; ++first)
+		{
+			for (int last = first; last != size + 1; ++last)
+			{
+				container_type container, expected;
+
+				for (int number = 0; number != size; ++number)
+				{
+					container.push_back(element_type(number));
+
+					if (number < first || number >= last)
+					{
+						expected.push_back(element_type(number));
+					}
+				}
+
+				const typename container_type::iterator result = plf::reorderase(container, container.begin() + first, container.begin() + last);
+				bool prefix_unchanged = true;
+
+				for (int index = 0; index != first; ++index)
+				{
+					if (!(container[index] == element_type(index)))
+					{
+						prefix_unchanged = false;
+					}
+				}
+
+				const int result_index = static_cast<int>(result - container.begin());
+				std::sort(container.begin(), container.end());
+
+				if (result_index != first || !prefix_unchanged || container != expected)
+				{
+					std::cout << "Range reorderase return test failed for " << container_name << ": size " << size << ", erasing [" << first << ", " << last << "), returned index " << result_index << "\n";
+					return false;
+				}
+			}
+		}
+	}
+
+	std::cout << "Range reorderase return test passed for " << container_name << "\n";
+	return true;
+}
+
+
+
 // Erase the 1s from every sub-range of every container of up to 8 zeroes and ones, and check the count and the remaining elements. The 1s outside of the sub-range must stay:
 template <class container_type>
 bool test_ranged_reorderase_all(const char *container_name)
@@ -228,6 +334,14 @@ int main()
 
 	// Test range erase with deque:
 	if (!test_deque_range_reorderase<int>("int") || !test_deque_range_reorderase<movable_struct>("movable_struct") || !test_deque_range_reorderase<copy_only_struct>("copy_only_struct"))
+	{
+		std::cin.get();
+		return 1;
+	}
+
+
+	// Test the iterator returned by range reorderase:
+	if (!test_range_reorderase_return<std::vector<int> >("vector of int") || !test_range_reorderase_return<std::deque<int> >("deque of int") || !test_range_reorderase_return<std::vector<movable_struct> >("vector of movable_struct") || !test_range_reorderase_return<std::deque<movable_struct> >("deque of movable_struct") || !test_range_reorderase_return<std::vector<copy_only_struct> >("vector of copy_only_struct") || !test_range_reorderase_return<std::deque<copy_only_struct> >("deque of copy_only_struct"))
 	{
 		std::cin.get();
 		return 1;

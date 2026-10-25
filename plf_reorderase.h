@@ -247,7 +247,9 @@ PLF_CONSTFUNC iterator_type range_reorderase(container_type &container, const it
 		std::copy(end - copy_distance, end, first);
 	}
 
-	return container.erase(end - distance, end);
+	const difference_type first_index = first - container.begin();
+	container.erase(end - distance, end);
+	return container.begin() + first_index; // first's former index now holds the element following the erased range. Re-obtained from begin() as erase() may invalidate first (eg. basic_string)
 }
 
 
@@ -343,7 +345,8 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 			std::copy(begin, first, last - copy_distance);
 		}
 
-		return container.erase(begin, last - copy_distance); // The front elements have been copied to the end of the range, so erase everything before them
+		container.erase(begin, last - copy_distance); // The front elements have been copied to the end of the range, so erase everything before them
+		return container.begin() + static_cast<typename container_type::difference_type>(copy_distance); // The element which followed the erased range is now directly after the front elements
 	}
 }
 
