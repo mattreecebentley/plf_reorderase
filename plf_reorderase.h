@@ -207,7 +207,7 @@ PLF_CONSTFUNC iterator_type range_reorderase(container_type &container, const it
 			{
 				typedef typename container_type::allocator_type allocator_type;
 				allocator_type alloc;
-				value_type * const temp = PLF_ALLOCATE(allocator_type, alloc, copy_distance, &*end);
+				value_type * const temp = PLF_ALLOCATE(allocator_type, alloc, copy_distance, &*first);
 				plf::uninitialized_copy(first, first + copy_distance, temp, alloc);
 
 				try
