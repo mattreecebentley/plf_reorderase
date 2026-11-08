@@ -4,6 +4,9 @@
 #include <deque>
 #include <algorithm> // std::sort
 #include <string>
+#include <list>
+#include <forward_list>
+#include <functional> // std::logical_not
 
 struct small_struct
 {
@@ -251,6 +254,124 @@ bool test_ranged_reorderase_all(const char *container_name)
 
 
 
+inline int element_number(const int number)
+{
+	return number;
+}
+
+
+template <class element_type>
+inline int element_number(const element_type &element)
+{
+	return element.number;
+}
+
+
+
+struct is_odd
+{
+	template <class element_type>
+	bool operator() (const element_type &element) const
+	{
+		return (element_number(element) & 1) != 0;
+	}
+};
+
+
+
+// Test partition and destructive_partition against every pattern of odd and even numbers in small containers, including empty containers and containers where every element matches:
+template <class container_type>
+bool test_partition(const char *container_name)
+{
+	typedef typename container_type::iterator iterator_type;
+
+	for (unsigned int size = 0; size != 7; ++size)
+	{
+		for (unsigned int bits = 0; bits != (1u << size); ++bits)
+		{
+			std::vector<int> source;
+			std::size_t expected_count = 0;
+
+			for (unsigned int index = 0; index != size; ++index)
+			{
+				const int number = static_cast<int>(index * 2 + ((bits >> index) & 1u));
+				source.push_back(number);
+				expected_count += (bits >> index) & 1u;
+			}
+
+			container_type partitioned(source.begin(), source.end()), destroyed(source.begin(), source.end());
+			const iterator_type partition_point = plf::partition(partitioned.begin(), partitioned.end(), is_odd());
+			const iterator_type destroyed_point = plf::destructive_partition(destroyed.begin(), destroyed.end(), is_odd());
+			bool passed = (static_cast<std::size_t>(std::distance(partitioned.begin(), partition_point)) == expected_count && static_cast<std::size_t>(std::distance(destroyed.begin(), destroyed_point)) == expected_count);
+
+			for (iterator_type current = partitioned.begin(); current != partitioned.end(); ++current)
+			{
+				passed = passed && (is_odd()(*current) == (std::distance(partitioned.begin(), current) < static_cast<std::ptrdiff_t>(expected_count)));
+			}
+
+			std::vector<int> sorted;
+
+			for (iterator_type current = partitioned.begin(); current != partitioned.end(); ++current)
+			{
+				sorted.push_back(element_number(*current));
+			}
+
+		 // partition must not lose or duplicate elements
+			std::sort(sorted.begin(), sorted.end());
+			passed = passed && (sorted == source);
+
+			std::vector<int> odd_numbers, kept_numbers; // destructive_partition must keep exactly the odd elements at the front
+
+			for (std::vector<int>::iterator current = source.begin(); current != source.end(); ++current)
+			{
+				if (is_odd()(*current))
+				{
+					odd_numbers.push_back(*current);
+				}
+			}
+
+			for (iterator_type current = destroyed.begin(); current != destroyed_point; ++current)
+			{
+				kept_numbers.push_back(element_number(*current));
+			}
+
+			std::sort(kept_numbers.begin(), kept_numbers.end());
+			passed = passed && (kept_numbers == odd_numbers);
+
+			if (!passed)
+			{
+				std::cout << "Partition test failed for " << container_name << ": size " << size << ", bits " << bits << "\n";
+				return false;
+			}
+		}
+	}
+
+	std::cout << "Partition test passed for " << container_name << "\n";
+	return true;
+}
+
+
+
+// Partitioning with raw pointers and with an iterator which dereferences to a temporary:
+bool test_partition_raw_pointer()
+{
+	int numbers[6] = {1, 2, 3, 4, 5, 7}, destroyed[6] = {1, 2, 3, 4, 5, 7};
+	std::vector<bool> flags(5, true);
+	flags[1] = false;
+	flags[3] = false;
+
+	if (plf::partition(numbers, numbers + 6, is_odd()) != numbers + 4 || plf::destructive_partition(destroyed, destroyed + 6, is_odd()) != destroyed + 4 || plf::partition(flags.begin(), flags.end(), std::logical_not<bool>()) != flags.begin() + 2 || flags[0] || flags[1] || !flags[2])
+	{
+		std::cout << "Partition test failed for raw pointers or vector<bool>\n";
+		return false;
+	}
+
+	std::cout << "Partition test passed for raw pointers and vector<bool>\n";
+	return true;
+}
+
+
+
 int main()
 {
 	// Test erase loops with single-element reorderase:
@@ -342,6 +463,14 @@ int main()
 
 	// Test the iterator returned by range reorderase:
 	if (!test_range_reorderase_return<std::vector<int> >("vector of int") || !test_range_reorderase_return<std::deque<int> >("deque of int") || !test_range_reorderase_return<std::vector<movable_struct> >("vector of movable_struct") || !test_range_reorderase_return<std::deque<movable_struct> >("deque of movable_struct") || !test_range_reorderase_return<std::vector<copy_only_struct> >("vector of copy_only_struct") || !test_range_reorderase_return<std::deque<copy_only_struct> >("deque of copy_only_struct"))
+	{
+		std::cin.get();
+		return 1;
+	}
+
+
+	// Test partitioning with forward, bidirectional and random-access iterators:
+	if (!test_partition<std::forward_list<int> >("forward_list of int") || !test_partition<std::list<int> >("list of int") || !test_partition<std::vector<int> >("vector of int") || !test_partition<std::deque<int> >("deque of int") || !test_partition<std::forward_list<movable_struct> >("forward_list of movable_struct") || !test_partition<std::list<movable_struct> >("list of movable_struct") || !test_partition<std::vector<movable_struct> >("vector of movable_struct") || !test_partition<std::forward_list<copy_only_struct> >("forward_list of copy_only_struct") || !test_partition<std::list<copy_only_struct> >("list of copy_only_struct") || !test_partition<std::vector<copy_only_struct> >("vector of copy_only_struct") || !test_partition_raw_pointer())
 	{
 		std::cin.get();
 		return 1;
