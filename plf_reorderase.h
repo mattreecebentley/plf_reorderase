@@ -32,7 +32,7 @@
 
 
 #include <cstring>	// memcpy
-#include <algorithm> // std::copy
+#include <algorithm> // std::copy, std::find_if
 #include <iterator> // std::move_iterator, std::contiguous_iterator_tag, std::random_access_iterator_tag
 #include <memory> // std::to_address
 #include <deque>
@@ -43,14 +43,10 @@ namespace plf
 
 
 template <class iterator_type>
-#ifdef PLF_TYPE_TRAITS_SUPPORT
-	PLF_CONSTFUNC inline void copy_or_move(const typename plf::enable_if<std::is_same<typename std::iterator_traits<iterator_type>::iterator_category, std::random_access_iterator_tag>::value, iterator_type>::type destination, const iterator_type source)
-#else
-	PLF_CONSTFUNC inline void copy_or_move(const iterator_type destination, const iterator_type source)
-#endif
+PLF_CONSTFUNC inline void copy_or_move(const iterator_type destination, const iterator_type source)
 {
 	#ifdef PLF_TYPE_TRAITS_SUPPORT
-		typedef typename iterator_type::value_type value_type;
+		typedef typename std::iterator_traits<iterator_type>::value_type value_type;
 
 		#ifdef PLF_MOVE_SEMANTICS_SUPPORT
 			#ifdef PLF_EXCEPTIONS_SUPPORT
@@ -356,14 +352,16 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 
 // Forward-iterator-only variant:
 template <class iterator_type, class predicate_function, class work_function>
-PLF_CONSTFUNC iterator_type inverse_partition(typename plf::enable_if<std::is_same<typename std::iterator_traits<iterator_type>::iterator_category, std::forward_iterator_tag>::value, iterator_type>::type first, iterator_type last, predicate_function predicate, work_function work)
+PLF_CONSTFUNC iterator_type inverse_partition_implementation(iterator_type first, const iterator_type last, predicate_function &predicate, work_function &work, const std::forward_iterator_tag)
 {
-	for (; !static_cast<bool>(predicate(*first)); ++first)
+	first = std::find_if(first, last, predicate);
+
+	if (first == last) // Empty range or no element matches
 	{
-		if (first == last) return first;
+		return last;
 	}
 
-	for (iterator_type it = ++iterator_type(first); it != last; ++it)
+	for (iterator_type it = first; ++it != last;)
 	{
 		if (!static_cast<bool>(predicate(*it)))
 		{
@@ -377,14 +375,15 @@ PLF_CONSTFUNC iterator_type inverse_partition(typename plf::enable_if<std::is_sa
 
 
 
+// Bidirectional and random-access variant:
 template <class iterator_type, class predicate_function, class work_function>
-PLF_CONSTFUNC iterator_type inverse_partition(typename plf::enable_if<!std::is_same<typename std::iterator_traits<iterator_type>::iterator_category, std::forward_iterator_tag>::value, iterator_type>::type first, iterator_type last, predicate_function predicate, work_function work)
+PLF_CONSTFUNC iterator_type inverse_partition_implementation(iterator_type first, iterator_type last, predicate_function &predicate, work_function &work, const std::bidirectional_iterator_tag)
 {
 	for (; first != last; ++first)
 	{
-		if (predicate(*first))
+		if (static_cast<bool>(predicate(*first)))
 		{
-			while (predicate(*--last)) // Check for same condition at back of range
+			while (static_cast<bool>(predicate(*--last))) // Check for same condition at back of range
 			{
 				if (last == first) return last;
 			}
@@ -394,6 +393,15 @@ PLF_CONSTFUNC iterator_type inverse_partition(typename plf::enable_if<!std::is_s
 	}
 
 	return last;
+}
+
+
+
+// Moves all elements which match the predicate to the back of the range, using work(destination, source) to move non-matching elements forward. Returns the start of the matching elements:
+template <class iterator_type, class predicate_function, class work_function>
+PLF_CONSTFUNC inline iterator_type inverse_partition(const typename plf::enable_if<true, iterator_type>::type first, const iterator_type last, predicate_function predicate, work_function work) // first is non-deduced so that iterator_type comes from last only
+{
+	return plf::inverse_partition_implementation(first, last, predicate, work, typename std::iterator_traits<iterator_type>::iterator_category());
 }
 
 
@@ -434,6 +442,12 @@ struct functor_negator
 	{
 		return !static_cast<bool>(functor(argument));
 	}
+
+	 template <typename argument_type>
+	 PLF_CONSTFUNC bool operator () (const argument_type &argument) // For iterators which dereference to a temporary (eg. std::vector<bool>)
+	{
+		return !static_cast<bool>(functor(argument));
+	}
 };
 
 
@@ -442,7 +456,7 @@ struct functor_negator
 template <class iterator_type, class predicate_function>
 PLF_CONSTFUNC inline iterator_type partition(iterator_type first, iterator_type last, predicate_function predicate)
 {
-	return plf::inverse_partition(first, last, plf::functor_negator(predicate), plf::iter_swap_functor<iterator_type>());
+	return plf::inverse_partition(first, last, plf::functor_negator<predicate_function>(predicate), plf::iter_swap_functor<iterator_type>());
 }
 
 
@@ -450,7 +464,7 @@ PLF_CONSTFUNC inline iterator_type partition(iterator_type first, iterator_type 
 template <class iterator_type, class predicate_function>
 PLF_CONSTFUNC inline iterator_type destructive_partition(iterator_type first, iterator_type last, predicate_function predicate)
 {
-	return plf::inverse_partition(first, last, plf::functor_negator(predicate), plf::copy_or_move_functor<iterator_type>());
+	return plf::inverse_partition(first, last, plf::functor_negator<predicate_function>(predicate), plf::copy_or_move_functor<iterator_type>());
 }
 
 
