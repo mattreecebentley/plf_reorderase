@@ -58,6 +58,58 @@ struct copy_only_struct // copy assignment is not noexcept and there is no move 
 
 
 
+struct large_trivial_struct // trivially copyable. At 512 bytes, libstdc++ and MSVC deques store one per block, so a segmented_vector of these has no two elements next to each other in memory (libc++ stores 16 per block)
+{
+	int number;
+	char padding[508];
+
+	large_trivial_struct(const int num): number(num) {}
+	bool operator < (const large_trivial_struct &rh) const { return number < rh.number; }
+	bool operator == (const large_trivial_struct &rh) const { return number == rh.number; }
+};
+
+
+// A random-access container which is not std::deque and whose elements are not contiguous, as with boost::container::stable_vector or boost::container::deque:
+template <class element_type>
+class segmented_vector
+{
+	std::deque<element_type> storage;
+
+public:
+	typedef element_type value_type;
+	typedef typename std::deque<element_type>::allocator_type allocator_type;
+	typedef typename std::deque<element_type>::size_type size_type;
+	typedef typename std::deque<element_type>::difference_type difference_type;
+	typedef typename std::deque<element_type>::iterator iterator;
+
+	segmented_vector() {}
+	segmented_vector(const size_type size, const element_type &value): storage(size, value) {}
+
+	iterator begin() { return storage.begin(); }
+	iterator end() { return storage.end(); }
+	size_type size() const { return storage.size(); }
+	bool empty() const { return storage.empty(); }
+	element_type & operator [] (const size_type index) { return storage[index]; }
+	void push_back(const element_type &value) { storage.push_back(value); }
+	void pop_back() { storage.pop_back(); }
+	iterator erase(const iterator first, const iterator last) { return storage.erase(first, last); }
+	bool operator == (const segmented_vector &rh) const { return storage == rh.storage; }
+	bool operator != (const segmented_vector &rh) const { return storage != rh.storage; }
+};
+
+
+struct trivial_move_only_struct // trivially copyable, but with no copy operations
+{
+	int number;
+
+	trivial_move_only_struct(const int num): number(num) {}
+	trivial_move_only_struct(trivial_move_only_struct &&source) = default;
+	trivial_move_only_struct & operator = (trivial_move_only_struct &&source) = default;
+	bool operator < (const trivial_move_only_struct &rh) const { return number < rh.number; }
+	bool operator == (const trivial_move_only_struct &rh) const { return number == rh.number; }
+};
+
+
 // Range-erase every sub-range of deques of up to 12 elements, including ranges which start closer to the front than their length, and check the remaining elements:
 template <class element_type>
 bool test_deque_range_reorderase(const char *type_name)
@@ -484,5 +536,21 @@ int main()
 		return 1;
 	}
 
+
+
+	// Test range reorderase with a random-access container whose elements are not contiguous, and with trivially copyable elements in a vector:
+	if (!test_range_reorderase_return<segmented_vector<large_trivial_struct> >("segmented_vector of large_trivial_struct") || !test_range_reorderase_return<std::vector<large_trivial_struct> >("vector of large_trivial_struct"))
+	{
+		std::cin.get();
+		return 1;
+	}
+
+	#ifdef __cpp_if_constexpr // Below C++17 every branch of the copy code is compiled, so move-only types do not compile there
+		if (!test_range_reorderase_return<std::vector<trivial_move_only_struct> >("vector of trivial_move_only_struct"))
+		{
+			std::cin.get();
+			return 1;
+		}
+	#endif
 	std::cin.get();
 }
