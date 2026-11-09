@@ -58,6 +58,77 @@ struct copy_only_struct // copy assignment is not noexcept and there is no move 
 
 
 
+// A vector whose iterator category is derived from std::random_access_iterator_tag rather than being that tag, eg. a custom tag, or C++20's std::contiguous_iterator_tag:
+struct derived_random_access_tag : std::random_access_iterator_tag {};
+
+
+template <class element_type, class category_type>
+class tagged_iterator
+{
+	typedef typename std::vector<element_type>::iterator base_iterator;
+	base_iterator current;
+
+public:
+	typedef category_type iterator_category;
+	typedef element_type value_type;
+	typedef std::ptrdiff_t difference_type;
+	typedef element_type * pointer;
+	typedef element_type & reference;
+
+	tagged_iterator(): current() {}
+	explicit tagged_iterator(const base_iterator it): current(it) {}
+	base_iterator base() const { return current; }
+
+	reference operator * () const { return *current; }
+	pointer operator -> () const { return &*current; }
+	reference operator [] (const difference_type offset) const { return current[offset]; }
+	tagged_iterator & operator ++ () { ++current; return *this; }
+	tagged_iterator & operator -- () { --current; return *this; }
+	tagged_iterator operator ++ (int) { const tagged_iterator copy(*this); ++current; return copy; }
+	tagged_iterator operator -- (int) { const tagged_iterator copy(*this); --current; return copy; }
+	tagged_iterator & operator += (const difference_type offset) { current += offset; return *this; }
+	tagged_iterator & operator -= (const difference_type offset) { current -= offset; return *this; }
+	tagged_iterator operator + (const difference_type offset) const { return tagged_iterator(current + offset); }
+	tagged_iterator operator - (const difference_type offset) const { return tagged_iterator(current - offset); }
+	friend tagged_iterator operator + (const difference_type offset, const tagged_iterator it) { return it + offset; }
+	difference_type operator - (const tagged_iterator &rh) const { return current - rh.current; }
+	bool operator == (const tagged_iterator &rh) const { return current == rh.current; }
+	bool operator != (const tagged_iterator &rh) const { return current != rh.current; }
+	bool operator < (const tagged_iterator &rh) const { return current < rh.current; }
+	bool operator > (const tagged_iterator &rh) const { return current > rh.current; }
+	bool operator <= (const tagged_iterator &rh) const { return current <= rh.current; }
+	bool operator >= (const tagged_iterator &rh) const { return current >= rh.current; }
+};
+
+
+template <class element_type, class category_type>
+class tagged_vector
+{
+	std::vector<element_type> storage;
+
+public:
+	typedef element_type value_type;
+	typedef typename std::vector<element_type>::allocator_type allocator_type;
+	typedef typename std::vector<element_type>::size_type size_type;
+	typedef typename std::vector<element_type>::difference_type difference_type;
+	typedef tagged_iterator<element_type, category_type> iterator;
+
+	tagged_vector() {}
+	tagged_vector(const size_type size, const element_type &value): storage(size, value) {}
+
+	iterator begin() { return iterator(storage.begin()); }
+	iterator end() { return iterator(storage.end()); }
+	size_type size() const { return storage.size(); }
+	bool empty() const { return storage.empty(); }
+	element_type & operator [] (const size_type index) { return storage[index]; }
+	void push_back(const element_type &value) { storage.push_back(value); }
+	void pop_back() { storage.pop_back(); }
+	iterator erase(const iterator first, const iterator last) { return iterator(storage.erase(first.base(), last.base())); }
+	bool operator == (const tagged_vector &rh) const { return storage == rh.storage; }
+	bool operator != (const tagged_vector &rh) const { return storage != rh.storage; }
+};
+
+
 // Range-erase every sub-range of deques of up to 12 elements, including ranges which start closer to the front than their length, and check the remaining elements:
 template <class element_type>
 bool test_deque_range_reorderase(const char *type_name)
@@ -484,5 +555,21 @@ int main()
 		return 1;
 	}
 
+
+
+	// Test containers whose iterator category is derived from std::random_access_iterator_tag:
+	if (!test_single_reorderase_erase_loop<tagged_vector<int, derived_random_access_tag> >("tagged_vector of int") || !test_range_reorderase_return<tagged_vector<int, derived_random_access_tag> >("tagged_vector of int"))
+	{
+		std::cin.get();
+		return 1;
+	}
+
+	#ifdef __cpp_lib_ranges // std::contiguous_iterator_tag
+		if (!test_single_reorderase_erase_loop<tagged_vector<int, std::contiguous_iterator_tag> >("contiguous tagged_vector of int") || !test_range_reorderase_return<tagged_vector<int, std::contiguous_iterator_tag> >("contiguous tagged_vector of int"))
+		{
+			std::cin.get();
+			return 1;
+		}
+	#endif
 	std::cin.get();
 }

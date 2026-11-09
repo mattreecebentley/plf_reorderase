@@ -104,7 +104,7 @@ PLF_CONSTFUNC iterator_type single_reorderase(container_type &container, const i
 
 template <class container_type>
 #ifdef PLF_TYPE_TRAITS_SUPPORT
-	PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type location)
+	PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename plf::enable_if<std::is_base_of<std::random_access_iterator_tag, typename std::iterator_traits<typename container_type::iterator>::iterator_category>::value, typename container_type::iterator>::type location)
 #else
 	PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename container_type::iterator location)
 #endif
@@ -252,7 +252,7 @@ PLF_CONSTFUNC iterator_type range_reorderase(container_type &container, const it
 
 template <class container_type>
 #ifdef PLF_TYPE_TRAITS_SUPPORT
-	PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename plf::enable_if<std::is_same<typename std::iterator_traits<typename container_type::iterator>::iterator_category, std::random_access_iterator_tag>::value, typename container_type::iterator>::type first, const typename container_type::iterator last)
+	PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename plf::enable_if<std::is_base_of<std::random_access_iterator_tag, typename std::iterator_traits<typename container_type::iterator>::iterator_category>::value, typename container_type::iterator>::type first, const typename container_type::iterator last)
 #else
 	PLF_CONSTFUNC inline typename container_type::iterator reorderase(container_type &container, const typename container_type::iterator first, const typename container_type::iterator last)
 #endif
