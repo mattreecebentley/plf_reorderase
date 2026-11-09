@@ -58,6 +58,42 @@ struct copy_only_struct // copy assignment is not noexcept and there is no move 
 
 
 
+struct move_only_struct // no copy operations, nothrow move assignment
+{
+	int number;
+
+	move_only_struct(const int num): number(num) {}
+	move_only_struct(move_only_struct &&source) noexcept: number(source.number) {}
+	move_only_struct & operator = (move_only_struct &&source) noexcept { number = source.number; return *this; }
+	bool operator < (const move_only_struct &rh) const { return number < rh.number; }
+	bool operator == (const move_only_struct &rh) const { return number == rh.number; }
+};
+
+
+struct throwing_move_only_struct // no copy operations, and move assignment is not noexcept, so moving is the only option
+{
+	int number;
+
+	throwing_move_only_struct(const int num): number(num) {}
+	throwing_move_only_struct(throwing_move_only_struct &&source): number(source.number) {}
+	throwing_move_only_struct & operator = (throwing_move_only_struct &&source) { number = source.number; return *this; }
+	bool operator < (const throwing_move_only_struct &rh) const { return number < rh.number; }
+	bool operator == (const throwing_move_only_struct &rh) const { return number == rh.number; }
+};
+
+
+struct trivial_move_only_struct // trivially copyable, but with no copy operations
+{
+	int number;
+
+	trivial_move_only_struct(const int num): number(num) {}
+	trivial_move_only_struct(trivial_move_only_struct &&source) = default;
+	trivial_move_only_struct & operator = (trivial_move_only_struct &&source) = default;
+	bool operator < (const trivial_move_only_struct &rh) const { return number < rh.number; }
+	bool operator == (const trivial_move_only_struct &rh) const { return number == rh.number; }
+};
+
+
 // Range-erase every sub-range of deques of up to 12 elements, including ranges which start closer to the front than their length, and check the remaining elements:
 template <class element_type>
 bool test_deque_range_reorderase(const char *type_name)
@@ -135,7 +171,8 @@ bool test_single_reorderase_erase_loop(const char *container_name)
 			}
 		}
 
-		container_type single(1, 1); // Erasing the only element
+		container_type single; // Erasing the only element
+		single.push_back(1);
 		const typename container_type::iterator returned = plf::reorderase(single, single.begin());
 
 		if (returned != single.end() || !single.empty())
@@ -484,5 +521,17 @@ int main()
 		return 1;
 	}
 
+
+
+	// Test every function with move-only element types:
+	if (!test_single_reorderase_erase_loop<std::vector<move_only_struct> >("vector of move_only_struct") || !test_single_reorderase_erase_loop<std::deque<move_only_struct> >("deque of move_only_struct") || !test_single_reorderase_erase_loop<std::vector<throwing_move_only_struct> >("vector of throwing_move_only_struct") || !test_single_reorderase_erase_loop<std::deque<throwing_move_only_struct> >("deque of throwing_move_only_struct")
+		|| !test_deque_range_reorderase<move_only_struct>("move_only_struct") || !test_deque_range_reorderase<throwing_move_only_struct>("throwing_move_only_struct") || !test_deque_range_reorderase<trivial_move_only_struct>("trivial_move_only_struct")
+		|| !test_range_reorderase_return<std::vector<move_only_struct> >("vector of move_only_struct") || !test_range_reorderase_return<std::vector<throwing_move_only_struct> >("vector of throwing_move_only_struct") || !test_range_reorderase_return<std::vector<trivial_move_only_struct> >("vector of trivial_move_only_struct")
+		|| !test_ranged_reorderase_all<std::vector<move_only_struct> >("vector of move_only_struct") || !test_ranged_reorderase_all<std::deque<move_only_struct> >("deque of move_only_struct") || !test_ranged_reorderase_all<std::vector<throwing_move_only_struct> >("vector of throwing_move_only_struct") || !test_ranged_reorderase_all<std::deque<throwing_move_only_struct> >("deque of throwing_move_only_struct")
+		|| !test_partition<std::forward_list<move_only_struct> >("forward_list of move_only_struct") || !test_partition<std::list<move_only_struct> >("list of move_only_struct") || !test_partition<std::vector<move_only_struct> >("vector of move_only_struct") || !test_partition<std::vector<throwing_move_only_struct> >("vector of throwing_move_only_struct"))
+	{
+		std::cin.get();
+		return 1;
+	}
 	std::cin.get();
 }
