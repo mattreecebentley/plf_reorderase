@@ -42,45 +42,140 @@ namespace plf
 {
 
 
+// How elements are copied or moved over other elements:
+struct copy_assign_tag {};
+struct move_assign_tag {};
+struct backup_copy_assign_tag {}; // Copy assignment may throw, so the elements about to be overwritten are backed up first and restored if it does
+
+
+
+// Picks the tag at compile time. Below C++17 if PLF_CONSTEXPR is a plain if, so every branch of a runtime if would be instantiated, including the copy branches for move-only types:
+template <class value_type>
+struct assignment_tag
+{
+	#if defined(PLF_TYPE_TRAITS_SUPPORT) && defined(PLF_MOVE_SEMANTICS_SUPPORT)
+		#ifdef PLF_EXCEPTIONS_SUPPORT
+			// Move when moving cannot throw, and always for types which cannot be copied. For the latter, if a move throws, the elements already moved are not restored:
+			typedef typename plf::conditional<(!std::is_trivially_copyable<value_type>::value && std::is_nothrow_move_assignable<value_type>::value) || !std::is_copy_assignable<value_type>::value, move_assign_tag,
+				typename plf::conditional<!std::is_nothrow_copy_assignable<value_type>::value, backup_copy_assign_tag, copy_assign_tag>::type>::type type;
+		#else
+			typedef typename plf::conditional<(!std::is_trivially_copyable<value_type>::value && std::is_move_assignable<value_type>::value) || !std::is_copy_assignable<value_type>::value, move_assign_tag, copy_assign_tag>::type type;
+		#endif
+	#elif defined(PLF_TYPE_TRAITS_SUPPORT) && defined(PLF_EXCEPTIONS_SUPPORT)
+		typedef typename plf::conditional<!std::is_nothrow_copy_assignable<value_type>::value, backup_copy_assign_tag, copy_assign_tag>::type type;
+	#else
+		typedef copy_assign_tag type;
+	#endif
+};
+
+
+
+template <class iterator_type>
+PLF_CONSTFUNC inline void copy_or_move_implementation(const iterator_type destination, const iterator_type source, const copy_assign_tag)
+{
+	*destination = *source;
+}
+
+
+
+#ifdef PLF_MOVE_SEMANTICS_SUPPORT
+	template <class iterator_type>
+	PLF_CONSTFUNC inline void copy_or_move_implementation(const iterator_type destination, const iterator_type source, const move_assign_tag)
+	{
+		*destination = std::move(*source);
+	}
+#endif
+
+
+
+#if defined(PLF_TYPE_TRAITS_SUPPORT) && defined(PLF_EXCEPTIONS_SUPPORT)
+	template <class iterator_type>
+	PLF_CONSTFUNC void copy_or_move_implementation(const iterator_type destination, const iterator_type source, const backup_copy_assign_tag)
+	{
+		const typename std::iterator_traits<iterator_type>::value_type temp = *destination;
+
+		try
+		{
+			*destination = *source;
+		}
+		catch (...)
+		{
+			*destination = temp;
+			throw;
+		}
+	}
+#endif
+
+
+
 template <class iterator_type>
 PLF_CONSTFUNC inline void copy_or_move(const iterator_type destination, const iterator_type source)
 {
-	#ifdef PLF_TYPE_TRAITS_SUPPORT
-		typedef typename std::iterator_traits<iterator_type>::value_type value_type;
-
-		#ifdef PLF_MOVE_SEMANTICS_SUPPORT
-			#ifdef PLF_EXCEPTIONS_SUPPORT
-				if PLF_CONSTEXPR (!std::is_trivially_copy_assignable<value_type>::value && std::is_nothrow_move_assignable<value_type>::value)
-			#else
-				if PLF_CONSTEXPR (!std::is_trivially_copy_assignable<value_type>::value && std::is_move_assignable<value_type>::value)
-			#endif
-			{
-				*destination = std::move(*source);
-			}
-			else
-		#endif
-		#ifdef PLF_EXCEPTIONS_SUPPORT
-			if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
-			{
-				const value_type temp = *destination;
-
-				try
-				{
-					*destination = *source;
-				}
-				catch (...)
-				{
-					*destination = temp;
-					throw;
-				}
-			}
-			else
-		#endif
-	#endif
-	{
-		*destination = *source;
-	}
+	plf::copy_or_move_implementation(destination, source, typename plf::assignment_tag<typename std::iterator_traits<iterator_type>::value_type>::type());
 }
+
+
+
+// Copies or moves count elements from source to destination. The two ranges must not overlap:
+template <class container_type, class iterator_type, class size_type>
+PLF_CONSTFUNC inline void range_copy_or_move(const iterator_type destination, const iterator_type source, const size_type count, const copy_assign_tag)
+{
+	std::copy(source, source + count, destination);
+}
+
+
+
+#ifdef PLF_MOVE_SEMANTICS_SUPPORT
+	template <class container_type, class iterator_type, class size_type>
+	PLF_CONSTFUNC inline void range_copy_or_move(const iterator_type destination, const iterator_type source, const size_type count, const move_assign_tag)
+	{
+		std::copy(plf::make_move_iterator(source), plf::make_move_iterator(source + count), destination);
+	}
+#endif
+
+
+
+#if defined(PLF_TYPE_TRAITS_SUPPORT) && defined(PLF_EXCEPTIONS_SUPPORT)
+	template <class container_type, class iterator_type, class size_type>
+	PLF_CONSTFUNC void range_copy_or_move(const iterator_type destination, const iterator_type source, const size_type count, const backup_copy_assign_tag)
+	{
+		typedef typename std::iterator_traits<iterator_type>::value_type value_type;
+		typedef typename container_type::allocator_type allocator_type; // Only needed here, so containers without an allocator_type (eg. static_vector) can use the other paths
+		allocator_type alloc;
+		value_type * const temp = PLF_ALLOCATE(allocator_type, alloc, count, &*destination);
+		plf::uninitialized_copy(destination, destination + count, temp, alloc); // Back up the elements which are about to be overwritten
+
+		try
+		{
+			std::copy(source, source + count, destination);
+		}
+		catch (...)
+		{
+			std::copy(temp, temp + count, destination);
+
+			if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
+			{
+				for (value_type *current = temp, *temp_end = temp + count; current != temp_end; ++current)
+				{
+					PLF_DESTROY(allocator_type, alloc, current);
+				}
+			}
+
+			PLF_DEALLOCATE(allocator_type, alloc, temp, count);
+			throw;
+		}
+
+		if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
+		{
+			for (value_type *current = temp, *temp_end = temp + count; current != temp_end; ++current)
+			{
+				PLF_DESTROY(allocator_type, alloc, current);
+			}
+		}
+
+		PLF_DEALLOCATE(allocator_type, alloc, temp, count);
+	}
+#endif
 
 
 
@@ -188,59 +283,10 @@ PLF_CONSTFUNC iterator_type range_reorderase(container_type &container, const it
 
 			std::memcpy(plf::void_cast(first), plf::void_cast(end - copy_distance), copy_distance * aligned_size);
 		}
-		#ifdef PLF_MOVE_SEMANTICS_SUPPORT
-			#ifdef PLF_EXCEPTIONS_SUPPORT
-				else if PLF_CONSTEXPR (!std::is_trivially_copyable<value_type>::value && std::is_nothrow_move_assignable<value_type>::value)
-			#else
-				else if PLF_CONSTEXPR (!std::is_trivially_copyable<value_type>::value && std::is_move_assignable<value_type>::value)
-			#endif
-			{
-				std::copy(plf::make_move_iterator(end - copy_distance), plf::make_move_iterator(end), first);
-			}
-		#endif
-		#ifdef PLF_EXCEPTIONS_SUPPORT
-			else if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
-			{
-				typedef typename container_type::allocator_type allocator_type;
-				allocator_type alloc;
-				value_type * const temp = PLF_ALLOCATE(allocator_type, alloc, copy_distance, &*first);
-				plf::uninitialized_copy(first, first + copy_distance, temp, alloc);
-
-				try
-				{
-					std::copy(end - copy_distance, end, first);
-				}
-				catch (...)
-				{
-					std::copy(temp, temp + copy_distance, first);
-
-					if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
-					{
-						for (value_type *current = temp, *temp_end = temp + copy_distance; current != temp_end; ++current)
-						{
-							PLF_DESTROY(allocator_type, alloc, current);
-						}
-					}
-
-					PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
-					throw;
-				}
-
-				if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
-				{
-					for (value_type *current = temp, *temp_end = temp + copy_distance; current != temp_end; ++current)
-					{
-						PLF_DESTROY(allocator_type, alloc, current);
-					}
-				}
-
-				PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
-			}
-		#endif
 		else
 	#endif
 	{
-		std::copy(end - copy_distance, end, first);
+		plf::range_copy_or_move<container_type>(first, end - copy_distance, copy_distance, typename plf::assignment_tag<typename container_type::value_type>::type());
 	}
 
 	const difference_type first_index = first - container.begin();
@@ -284,63 +330,7 @@ PLF_CONSTFUNC typename std::deque<value_type, allocator_type>::iterator reordera
 	else
 	{
 		const size_type copy_distance = static_cast<size_type>(first - begin);
-
-		#ifdef PLF_TYPE_TRAITS_SUPPORT
-			#ifdef PLF_MOVE_SEMANTICS_SUPPORT
-				#ifdef PLF_EXCEPTIONS_SUPPORT
-					if PLF_CONSTEXPR (!std::is_trivially_copyable<value_type>::value && std::is_nothrow_move_assignable<value_type>::value)
-				#else
-					if PLF_CONSTEXPR (!std::is_trivially_copyable<value_type>::value && std::is_move_assignable<value_type>::value)
-				#endif
-				{
-					std::copy(plf::make_move_iterator(begin), plf::make_move_iterator(begin + copy_distance), last - copy_distance);
-				}
-				else
-			#endif
-			#ifdef PLF_EXCEPTIONS_SUPPORT
-				if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
-				{
-					allocator_type alloc;
-					value_type * const temp = PLF_ALLOCATE(allocator_type, alloc, copy_distance, &*begin);
-					plf::uninitialized_copy(last - copy_distance, last, temp, alloc); // Back up the elements which are about to be overwritten
-
-					try
-					{
-						std::copy(begin, begin + copy_distance, last - copy_distance);
-					}
-					catch (...)
-					{
-						std::copy(temp, temp + copy_distance, last - copy_distance);
-
-						if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
-						{
-							for (value_type *current = temp, *temp_end = temp + copy_distance; current != temp_end; ++current)
-							{
-								PLF_DESTROY(allocator_type, alloc, current);
-							}
-						}
-
-						PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
-						throw;
-					}
-
-					if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
-					{
-						for (value_type *current = temp, *temp_end = temp + copy_distance; current != temp_end; ++current)
-						{
-							PLF_DESTROY(allocator_type, alloc, current);
-						}
-					}
-
-					PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
-				}
-			#endif
-			else
-		#endif
-		{
-			std::copy(begin, first, last - copy_distance);
-		}
-
+		plf::range_copy_or_move<container_type>(last - copy_distance, begin, copy_distance, typename plf::assignment_tag<value_type>::type());
 		container.erase(begin, last - copy_distance); // The front elements have been copied to the end of the range, so erase everything before them
 		return container.begin() + static_cast<typename container_type::difference_type>(copy_distance); // The element which followed the erased range is now directly after the front elements
 	}
