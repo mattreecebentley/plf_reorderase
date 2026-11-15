@@ -31,9 +31,8 @@
 
 
 
-#include <cstring>	// memcpy
 #include <algorithm> // std::copy, std::find_if
-#include <iterator> // std::move_iterator, std::contiguous_iterator_tag, std::random_access_iterator_tag
+#include <iterator> // std::move_iterator, std::random_access_iterator_tag
 #include <memory> // std::to_address
 #include <deque>
 
@@ -223,23 +222,6 @@ PLF_CONSTFUNC inline typename std::deque<value_type, allocator_type>::iterator r
 
 
 
-#ifndef PLF_CPP20_SUPPORT
-	template <typename value_type>
-	struct is_deque
-	{
-		static const bool value = false;
-	};
-
-
-	template <typename value_type, typename allocator_type>
-	struct is_deque<std::deque<value_type, allocator_type> >
-	{
-		static const bool value = true;
-	};
-#endif
-
-
-
 template <class container_type, class iterator_type>
 PLF_CONSTFUNC iterator_type range_reorderase(container_type &container, const iterator_type first, const iterator_type last)
 {
@@ -269,21 +251,57 @@ PLF_CONSTFUNC iterator_type range_reorderase(container_type &container, const it
 	#ifdef PLF_TYPE_TRAITS_SUPPORT
 		typedef typename container_type::value_type value_type;
 
-		#ifdef PLF_CPP20_SUPPORT
-			if PLF_CONSTEXPR (std::is_same<typename std::iterator_traits<iterator_type>::iterator_category, std::contiguous_iterator_tag>::value && std::is_trivially_copyable<value_type>::value)
-		#else
-			if PLF_CONSTEXPR (!plf::is_deque<container_type>::value && std::is_trivially_copyable<value_type>::value)
-		#endif
-		{
-			#ifdef PLF_ALIGNMENT_SUPPORT
-				PLF_CONSTEXPR const size_type aligned_size = (alignof(value_type) > sizeof(value_type)) ? alignof(value_type) : sizeof(value_type); // To compensate for possible overalignment
+		#ifdef PLF_MOVE_SEMANTICS_SUPPORT
+			#ifdef PLF_EXCEPTIONS_SUPPORT
+				if PLF_CONSTEXPR ((!std::is_trivially_copyable<value_type>::value && std::is_nothrow_move_assignable<value_type>::value) || !std::is_copy_assignable<value_type>::value) // Types which cannot be copied (eg. trivially copyable move-only types) have to be moved
 			#else
-				PLF_CONSTEXPR const size_type aligned_size = sizeof(value_type);
+				if PLF_CONSTEXPR ((!std::is_trivially_copyable<value_type>::value && std::is_move_assignable<value_type>::value) || !std::is_copy_assignable<value_type>::value)
 			#endif
+			{
+				std::copy(plf::make_move_iterator(end - copy_distance), plf::make_move_iterator(end), first);
+			}
+			else
+		#endif
+		#ifdef PLF_EXCEPTIONS_SUPPORT
+			if PLF_CONSTEXPR (!std::is_nothrow_copy_assignable<value_type>::value)
+			{
+				typedef typename container_type::allocator_type allocator_type;
+				allocator_type alloc;
+				value_type * const temp = PLF_ALLOCATE(allocator_type, alloc, copy_distance, &*first);
+				plf::uninitialized_copy(first, first + copy_distance, temp, alloc);
 
-			std::memcpy(plf::void_cast(first), plf::void_cast(end - copy_distance), copy_distance * aligned_size);
-		}
-		else
+				try
+				{
+					std::copy(end - copy_distance, end, first);
+				}
+				catch (...)
+				{
+					std::copy(temp, temp + copy_distance, first);
+
+					if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
+					{
+						for (value_type *current = temp, *temp_end = temp + copy_distance; current != temp_end; ++current)
+						{
+							PLF_DESTROY(allocator_type, alloc, current);
+						}
+					}
+
+					PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
+					throw;
+				}
+
+				if PLF_CONSTEXPR (!std::is_trivially_destructible<value_type>::value)
+				{
+					for (value_type *current = temp, *temp_end = temp + copy_distance; current != temp_end; ++current)
+					{
+						PLF_DESTROY(allocator_type, alloc, current);
+					}
+				}
+
+				PLF_DEALLOCATE(allocator_type, alloc, temp, copy_distance);
+			}
+			else
+		#endif
 	#endif
 	{
 		plf::range_copy_or_move<container_type>(first, end - copy_distance, copy_distance, typename plf::assignment_tag<typename container_type::value_type>::type());
