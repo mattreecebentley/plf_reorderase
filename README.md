@@ -9,46 +9,36 @@ Function descriptions follow, for all other information including full benchmark
 
 
 
-* template <class container_type, class iterator_type = typename container_type::iterator>
-constexpr void reorderase (container_type &container, iterator_type position)
+* template <class container_type>
+constexpr typename container_type::iterator reorderase (container_type &container, typename container_type::iterator position)
 
-  Erase single element. Use wherever you would use a container's .erase(position) member function normally.
+  Erase single element. Use wherever you would use a container's .erase(position) member function normally. Returns an iterator at position's index (the same index .erase(position) would return), which is end() if position was the last element.
 
-* template <class container_type, class iterator_type = typename container_type::iterator>
-constexpr void reorderase (container_type &container, iterator_type first, iterator_type last)
+* template <class container_type>
+constexpr typename container_type::iterator reorderase (container_type &container, typename container_type::iterator first, typename container_type::iterator last)
 
-  Erase a range of elements. Use wherever you would use a container's .erase(first, last) member function normally. Example:
+  Erase a range of elements. Use wherever you would use a container's .erase(first, last) member function normally. Returns an iterator at first's index (the same index .erase(first, last) would return), which is end() if last was end().
 
 * template <class container_type, class predicate_function>
-constexpr void reorderase_all_if (container_type &container, predicate_function predicate)
+constexpr typename container_type::size_type reorderase_all_if (container_type &container, predicate_function predicate)
 
-  Erase all elements in a container which match the predicate. Use wherever you would use std::erase_if normally. 
+  Erase all elements in a container which match the predicate. Use wherever you would use std::erase_if normally. Returns the number of elements erased.
 
 * template <class container_type, class value_type>
-constexpr void reorderase_all (container_type &container, value_type value)
+constexpr typename container_type::size_type reorderase_all (container_type &container, const value_type &value)
 
-  Erase all elements in a container which are equal to value. Use wherever you would use std::erase normally.
-
-* template <class container_type, class iterator_type, class predicate_function>
-constexpr void reorderase_all_if (container_type &container, iterator_type first, iterator_type last, predicate_function predicate)
-
-  Erase all elements in a sub-range of a container which match the predicate. Equivalent to std::erase_if, if there were an equivalent of std::erase_if for sub-ranges of containers. Example using a lambda:
-
-* template <class container_type, class iterator_type, class value_type>
-constexpr void reorderase_all (container_type &container, iterator_type first, iterator_type last, value_type value)
-
-  Erase all elements in a sub-range of a container which are equal to value. Will use appropriate elements from the back of the container to fill the holes. Equivalent to std::erase, if there were an equivalent of std::erase for sub-ranges of containers. value must be able to be static_cast'd to container_type::value_type.
+  Erase all elements in a container which are equal to value. Use wherever you would use std::erase normally. Returns the number of elements erased.
 
 * template <class container_type, class iterator_type, class predicate_function>
-constexpr void reorderase_all_if (container_type &container, iterator_type first, iterator_type last, predicate_function predicate)
+constexpr typename container_type::size_type reorderase_all_if (container_type &container, iterator_type first, iterator_type last, predicate_function predicate)
 
-  Erase all elements in a sub-range of a container which match the predicate. Equivalent to std::erase_if, if there were an equivalent of std::erase_if for sub-ranges of containers.
+  Erase all elements in a sub-range of a container which match the predicate. Will use appropriate elements from the back of the container to fill the holes. Equivalent to std::erase_if, if there were an equivalent of std::erase_if for sub-ranges of containers. Returns the number of elements erased.
 
 * template <class container_type, class iterator_type, class value_type>
-constexpr void reorderase_all (container_type &container, iterator_type first, iterator_type last, value_type value)
+constexpr typename container_type::size_type reorderase_all (container_type &container, iterator_type first, iterator_type last, const value_type &value)
 
-  Erase all elements in a sub-range of a container which are equal to value. Will use appropriate elements from the back of the container to fill the holes. Equivalent to std::erase, if there were an equivalent of std::erase for sub-ranges of containers. value must be able to be static_cast'd to container_type::value_type. 
-  
+  Erase all elements in a sub-range of a container which are equal to value. Will use appropriate elements from the back of the container to fill the holes. Equivalent to std::erase, if there were an equivalent of std::erase for sub-ranges of containers. value must be able to be static_cast'd to container_type::value_type. Returns the number of elements erased.
+
 * template <class iterator_type, class predicate_function>
 constexpr iterator_type partition (iterator_type first, iterator_type last, predicate_function predicate)
 

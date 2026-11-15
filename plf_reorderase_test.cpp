@@ -98,6 +98,30 @@ public:
 };
 
 
+struct move_only_struct // no copy operations, nothrow move assignment
+{
+	int number;
+
+	move_only_struct(const int num): number(num) {}
+	move_only_struct(move_only_struct &&source) noexcept: number(source.number) {}
+	move_only_struct & operator = (move_only_struct &&source) noexcept { number = source.number; return *this; }
+	bool operator < (const move_only_struct &rh) const { return number < rh.number; }
+	bool operator == (const move_only_struct &rh) const { return number == rh.number; }
+};
+
+
+struct throwing_move_only_struct // no copy operations, and move assignment is not noexcept, so moving is the only option
+{
+	int number;
+
+	throwing_move_only_struct(const int num): number(num) {}
+	throwing_move_only_struct(throwing_move_only_struct &&source): number(source.number) {}
+	throwing_move_only_struct & operator = (throwing_move_only_struct &&source) { number = source.number; return *this; }
+	bool operator < (const throwing_move_only_struct &rh) const { return number < rh.number; }
+	bool operator == (const throwing_move_only_struct &rh) const { return number == rh.number; }
+};
+
+
 struct trivial_move_only_struct // trivially copyable, but with no copy operations
 {
 	int number;
@@ -107,6 +131,77 @@ struct trivial_move_only_struct // trivially copyable, but with no copy operatio
 	trivial_move_only_struct & operator = (trivial_move_only_struct &&source) = default;
 	bool operator < (const trivial_move_only_struct &rh) const { return number < rh.number; }
 	bool operator == (const trivial_move_only_struct &rh) const { return number == rh.number; }
+};
+
+
+// A vector whose iterator category is derived from std::random_access_iterator_tag rather than being that tag, eg. a custom tag, or C++20's std::contiguous_iterator_tag:
+struct derived_random_access_tag : std::random_access_iterator_tag {};
+
+
+template <class element_type, class category_type>
+class tagged_iterator
+{
+	typedef typename std::vector<element_type>::iterator base_iterator;
+	base_iterator current;
+
+public:
+	typedef category_type iterator_category;
+	typedef element_type value_type;
+	typedef std::ptrdiff_t difference_type;
+	typedef element_type * pointer;
+	typedef element_type & reference;
+
+	tagged_iterator(): current() {}
+	explicit tagged_iterator(const base_iterator it): current(it) {}
+	base_iterator base() const { return current; }
+
+	reference operator * () const { return *current; }
+	pointer operator -> () const { return &*current; }
+	reference operator [] (const difference_type offset) const { return current[offset]; }
+	tagged_iterator & operator ++ () { ++current; return *this; }
+	tagged_iterator & operator -- () { --current; return *this; }
+	tagged_iterator operator ++ (int) { const tagged_iterator copy(*this); ++current; return copy; }
+	tagged_iterator operator -- (int) { const tagged_iterator copy(*this); --current; return copy; }
+	tagged_iterator & operator += (const difference_type offset) { current += offset; return *this; }
+	tagged_iterator & operator -= (const difference_type offset) { current -= offset; return *this; }
+	tagged_iterator operator + (const difference_type offset) const { return tagged_iterator(current + offset); }
+	tagged_iterator operator - (const difference_type offset) const { return tagged_iterator(current - offset); }
+	friend tagged_iterator operator + (const difference_type offset, const tagged_iterator it) { return it + offset; }
+	difference_type operator - (const tagged_iterator &rh) const { return current - rh.current; }
+	bool operator == (const tagged_iterator &rh) const { return current == rh.current; }
+	bool operator != (const tagged_iterator &rh) const { return current != rh.current; }
+	bool operator < (const tagged_iterator &rh) const { return current < rh.current; }
+	bool operator > (const tagged_iterator &rh) const { return current > rh.current; }
+	bool operator <= (const tagged_iterator &rh) const { return current <= rh.current; }
+	bool operator >= (const tagged_iterator &rh) const { return current >= rh.current; }
+};
+
+
+template <class element_type, class category_type>
+class tagged_vector
+{
+	std::vector<element_type> storage;
+
+public:
+	typedef element_type value_type;
+	typedef typename std::vector<element_type>::allocator_type allocator_type;
+	typedef typename std::vector<element_type>::size_type size_type;
+	typedef typename std::vector<element_type>::difference_type difference_type;
+	typedef tagged_iterator<element_type, category_type> iterator;
+
+	tagged_vector() {}
+	tagged_vector(const size_type size, const element_type &value): storage(size, value) {}
+
+	iterator begin() { return iterator(storage.begin()); }
+	iterator end() { return iterator(storage.end()); }
+	size_type size() const { return storage.size(); }
+	bool empty() const { return storage.empty(); }
+	element_type & operator [] (const size_type index) { return storage[index]; }
+	void push_back(const element_type &value) { storage.push_back(value); }
+	void pop_back() { storage.pop_back(); }
+	iterator erase(const iterator first, const iterator last) { return iterator(storage.erase(first.base(), last.base())); }
+	bool operator == (const tagged_vector &rh) const { return storage == rh.storage; }
+	bool operator != (const tagged_vector &rh) const { return storage != rh.storage; }
 };
 
 
@@ -187,7 +282,8 @@ bool test_single_reorderase_erase_loop(const char *container_name)
 			}
 		}
 
-		container_type single(1, 1); // Erasing the only element
+		container_type single; // Erasing the only element
+		single.push_back(1);
 		const typename container_type::iterator returned = plf::reorderase(single, single.begin());
 
 		if (returned != single.end() || !single.empty())
@@ -538,8 +634,12 @@ int main()
 
 
 
-	// Test range reorderase with a random-access container whose elements are not contiguous, and with trivially copyable elements in a vector:
-	if (!test_range_reorderase_return<segmented_vector<large_trivial_struct> >("segmented_vector of large_trivial_struct") || !test_range_reorderase_return<std::vector<large_trivial_struct> >("vector of large_trivial_struct"))
+	// Test every function with move-only element types:
+	if (!test_single_reorderase_erase_loop<std::vector<move_only_struct> >("vector of move_only_struct") || !test_single_reorderase_erase_loop<std::deque<move_only_struct> >("deque of move_only_struct") || !test_single_reorderase_erase_loop<std::vector<throwing_move_only_struct> >("vector of throwing_move_only_struct") || !test_single_reorderase_erase_loop<std::deque<throwing_move_only_struct> >("deque of throwing_move_only_struct")
+		|| !test_deque_range_reorderase<move_only_struct>("move_only_struct") || !test_deque_range_reorderase<throwing_move_only_struct>("throwing_move_only_struct") || !test_deque_range_reorderase<trivial_move_only_struct>("trivial_move_only_struct")
+		|| !test_range_reorderase_return<std::vector<move_only_struct> >("vector of move_only_struct") || !test_range_reorderase_return<std::vector<throwing_move_only_struct> >("vector of throwing_move_only_struct") || !test_range_reorderase_return<std::vector<trivial_move_only_struct> >("vector of trivial_move_only_struct")
+		|| !test_ranged_reorderase_all<std::vector<move_only_struct> >("vector of move_only_struct") || !test_ranged_reorderase_all<std::deque<move_only_struct> >("deque of move_only_struct") || !test_ranged_reorderase_all<std::vector<throwing_move_only_struct> >("vector of throwing_move_only_struct") || !test_ranged_reorderase_all<std::deque<throwing_move_only_struct> >("deque of throwing_move_only_struct")
+		|| !test_partition<std::forward_list<move_only_struct> >("forward_list of move_only_struct") || !test_partition<std::list<move_only_struct> >("list of move_only_struct") || !test_partition<std::vector<move_only_struct> >("vector of move_only_struct") || !test_partition<std::vector<throwing_move_only_struct> >("vector of throwing_move_only_struct"))
 	{
 		std::cin.get();
 		return 1;
